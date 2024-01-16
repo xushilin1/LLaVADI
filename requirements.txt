@@ -1,0 +1,4 @@
+transformers==4.31.0
+einops==0.4.1
+flash-attn==2.3.6
+accelerate==0.25.0

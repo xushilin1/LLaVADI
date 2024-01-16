@@ -5,8 +5,8 @@ deepspeed llava/train/train_mem.py \
     --deepspeed ./scripts/zero2.json \
     --model_name_or_path checkpoints/vicuna-13b-v1.5 \
     --version plain \
-    --data_path ./playground/data/LLaVA-Pretrain/blip_laion_cc_sbu_558k.json \
-    --image_folder ./playground/data/LLaVA-Pretrain/images \
+    --data_path datasets/LLaVA-Pretrain/sblip_laion_cc_sbu_558k.json \
+    --image_folder datasets/LLaVA-Pretrain/images \
     --vision_tower checkpoints/clip-vit-large-patch14-336 \
     --mm_projector_type mlp2x_gelu \
     --tune_mm_mlp_adapter True \

@@ -3,7 +3,7 @@ __pycache__
 *.pyc
 *.egg-info
 dist
-data/
+datasets/
 # Log
 *.log
 *.log.*

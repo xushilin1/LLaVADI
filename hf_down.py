@@ -12,7 +12,7 @@ def main(args):
         local_dir=args.local_dir,
         local_dir_use_symlinks=False,
         max_workers=8,
-        resume_downloan=True,
+        resume_download=True,
         cache_dir='./cache_dir/'
 )
 

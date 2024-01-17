@@ -7,14 +7,14 @@ deepspeed llava/train/train_mem.py \
     --version plain \
     --data_path datasets/LLaVA-Pretrain/blip_laion_cc_sbu_558k.json \
     --image_folder datasets/LLaVA-Pretrain/images \
-    --vision_tower checkpoints/clip-vit-large-patch14-336 \
+    --vision_tower convnext_large_d_320/laion2b_s29b_b131k_ft_soup \
     --mm_projector_type mlp2x_gelu \
     --tune_mm_mlp_adapter True \
     --mm_vision_select_layer -2 \
     --mm_use_im_start_end False \
     --mm_use_im_patch_token False \
     --bf16 True \
-    --output_dir ./output/llava-v1.5-13b-pretrain \
+    --output_dir ./output/llava-v1.5-13b-pretrain_convnext_l \
     --num_train_epochs 1 \
     --per_device_train_batch_size 32 \
     --per_device_eval_batch_size 4 \

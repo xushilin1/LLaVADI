@@ -29,8 +29,10 @@ class CLIPVisionTowerConvNext(nn.Module):
         checkpoint_path = open_clip.download_pretrained(pretrained_cfg, cache_dir=None)
         model_cfg.pop('text_cfg')
         self.vision_tower = open_clip.model._build_vision_tower(**model_cfg)
-        # open_clip.load_checkpoint(visual, checkpoint_path)
-        self.vision_tower.load_state_dict(torch.load(checkpoint_path), strict=False)
+
+        state_dict = torch.load(checkpoint_path)
+        state_dict = {k.replace('visual.',''): v for k, v in state_dict.items() if 'visual' in k}
+        self.vision_tower.load_state_dict(state_dict, strict=False)
 
         self.vision_tower.requires_grad_(False)
 

@@ -110,8 +110,11 @@ def eval_model(args):
 
     result_part = []
     for (input_ids, image_tensor, line) in tqdm(data_loader):
-        idx = line["question_id"].item()
-        cur_prompt = line["text"]
+        if isinstance(line['question_id'], torch.Tensor):
+            idx = line["question_id"].item()
+        else:
+            idx = line['question_id'][0]
+        cur_prompt = line["text"][0]
 
         input_ids = input_ids.to(device='cuda', non_blocking=True)
 

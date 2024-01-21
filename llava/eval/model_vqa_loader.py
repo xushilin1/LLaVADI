@@ -11,10 +11,12 @@ from llava.model.builder import load_pretrained_model
 from llava.utils import disable_torch_init
 from llava.mm_utils import tokenizer_image_token, process_images, get_model_name_from_path
 from torch.utils.data import Dataset, DataLoader
-
+from torch.utils.data.distributed import DistributedSampler
+import torch.distributed as dist
 from PIL import Image
 import math
-
+import deepspeed
+import pickle
 
 def split_list(lst, n):
     """Split a list into n (roughly) equal-sized chunks"""
@@ -55,41 +57,60 @@ class CustomDataset(Dataset):
 
         input_ids = tokenizer_image_token(prompt, self.tokenizer, IMAGE_TOKEN_INDEX, return_tensors='pt')
 
-        return input_ids, image_tensor
+        return input_ids, image_tensor, line
 
     def __len__(self):
         return len(self.questions)
 
 
 # DataLoader
-def create_data_loader(questions, image_folder, tokenizer, image_processor, model_config, batch_size=1, num_workers=4):
+def create_data_loader(args, questions, image_folder, tokenizer, image_processor, model_config, batch_size=1, num_workers=4):
     assert batch_size == 1, "batch_size must be 1"
     dataset = CustomDataset(questions, image_folder, tokenizer, image_processor, model_config)
-    data_loader = DataLoader(dataset, batch_size=batch_size, num_workers=num_workers, shuffle=False)
+    sampler = DistributedSampler(dataset,shuffle=False) if args.distributed else None
+    data_loader = DataLoader(dataset, batch_size=batch_size, num_workers=num_workers, shuffle=False, sampler=sampler)
     return data_loader
 
 
 def eval_model(args):
     # Model
+    rank = int(os.environ['RANK']) if args.distributed else 0
     disable_torch_init()
     model_path = os.path.expanduser(args.model_path)
     model_name = get_model_name_from_path(model_path)
     tokenizer, model, image_processor, context_len = load_pretrained_model(model_path, args.model_base, model_name)
 
+    ds_config = {
+        "train_micro_batch_size_per_gpu": 1,
+        "gradient_accumulation_steps": 100,
+        "optimizer": {"type": "AdamW", "params": {"lr": 0.001, "weight_decay": 0.0,
+                                                "betas": (0.1, 0.1)}},
+        "scheduler": {"type": "WarmupDecayLR",
+                    "params": {"total_num_steps": 1, "warmup_min_lr": 0,
+                                "warmup_max_lr": 0.0001, "warmup_num_steps": 100, "warmup_type": "linear"}},
+        "gradient_clipping": 1.0,
+        "zero_optimization": {"stage": 2, "contiguous_gradients": True, "overlap_comm": True,
+                            "reduce_scatter": True, "reduce_bucket_size": 5e8,
+                            "allgather_bucket_size": 5e8}
+    }
+    model, _, _, _ = deepspeed.initialize(
+        model=model, model_parameters=model.parameters(), config=ds_config
+    )
     questions = [json.loads(q) for q in open(os.path.expanduser(args.question_file), "r")]
     questions = get_chunk(questions, args.num_chunks, args.chunk_idx)
     answers_file = os.path.expanduser(args.answers_file)
     os.makedirs(os.path.dirname(answers_file), exist_ok=True)
-    ans_file = open(answers_file, "w")
+    
 
     if 'plain' in model_name and 'finetune' not in model_name.lower() and 'mmtag' not in args.conv_mode:
         args.conv_mode = args.conv_mode + '_mmtag'
         print(f'It seems that this is a plain model, but it is not using a mmtag prompt, auto switching to {args.conv_mode}.')
 
-    data_loader = create_data_loader(questions, args.image_folder, tokenizer, image_processor, model.config)
+    data_loader = create_data_loader(args, questions, args.image_folder, tokenizer, image_processor, model.model.config)
 
-    for (input_ids, image_tensor), line in tqdm(zip(data_loader, questions), total=len(questions)):
-        idx = line["question_id"]
+    result_part = []
+    for (input_ids, image_tensor, line) in tqdm(data_loader):
+        idx = line["question_id"].item()
         cur_prompt = line["text"]
 
         input_ids = input_ids.to(device='cuda', non_blocking=True)
@@ -113,14 +134,48 @@ def eval_model(args):
         outputs = outputs.strip()
 
         ans_id = shortuuid.uuid()
-        ans_file.write(json.dumps({"question_id": idx,
-                                   "prompt": cur_prompt,
-                                   "text": outputs,
-                                   "answer_id": ans_id,
-                                   "model_id": model_name,
-                                   "metadata": {}}) + "\n")
-        # ans_file.flush()
-    ans_file.close()
+        result_part.append({
+            "question_id": idx,
+            "prompt": cur_prompt,
+            "text": outputs,
+            "answer_id": ans_id,
+            "model_id": model_name,
+            "metadata": {}}
+        )
+
+    rank, world_size = torch.distributed.get_rank(), torch.distributed.get_world_size()
+    part_tensor = torch.tensor(
+        bytearray(pickle.dumps(result_part)), dtype=torch.uint8, device='cuda')
+
+    shape_tensor = torch.tensor(part_tensor.shape, device='cuda')
+    shape_list = [shape_tensor.clone() for _ in range(world_size)]
+    dist.all_gather(shape_list, shape_tensor) # 每个进程占据一个位置
+    
+    shape_max = torch.tensor(shape_list).max()
+    part_send = torch.zeros(shape_max, dtype=torch.uint8, device='cuda')
+    part_send[:shape_tensor[0]] = part_tensor
+
+    part_recv_list = [
+        part_tensor.new_zeros(shape_max) for _ in range(world_size)
+    ]
+    dist.all_gather(part_recv_list, part_send)
+
+    if rank == 0:
+        part_list = []
+        for recv, shape in zip(part_recv_list, shape_list):
+            part_list.append(
+                pickle.loads(recv[:shape[0]].cpu().numpy().tobytes()))
+        # sort the results
+        # ordered_results = []
+        # for res in zip(*part_list):
+        #     ordered_results.extend(list(res))
+        # the dataloader may pad some samples
+        # ordered_results = ordered_results[:len(dataset)]
+        ans_file = open(answers_file, "w")
+        for res in part_list:
+            ans_file.write(json.dumps(res) + '\n')
+       
+        ans_file.close()
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
@@ -136,6 +191,10 @@ if __name__ == "__main__":
     parser.add_argument("--top_p", type=float, default=None)
     parser.add_argument("--num_beams", type=int, default=1)
     parser.add_argument("--max_new_tokens", type=int, default=128)
+    parser.add_argument("--local_rank", default=0, type=int)
     args = parser.parse_args()
 
+    world_size = torch.cuda.device_count()
+    args.distributed = world_size > 1
+    
     eval_model(args)

@@ -166,13 +166,13 @@ def eval_model(args):
             part_list.append(
                 pickle.loads(recv[:shape[0]].cpu().numpy().tobytes()))
         # sort the results
-        # ordered_results = []
-        # for res in zip(*part_list):
-        #     ordered_results.extend(list(res))
+        ordered_results = []
+        for res in zip(*part_list):
+            ordered_results.extend(list(res))
         # the dataloader may pad some samples
         # ordered_results = ordered_results[:len(dataset)]
         ans_file = open(answers_file, "w")
-        for res in part_list:
+        for res in ordered_results:
             ans_file.write(json.dumps(res) + '\n')
        
         ans_file.close()

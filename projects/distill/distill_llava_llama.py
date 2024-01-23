@@ -99,12 +99,12 @@ class DistillLlavaLlamaForCausalLM(LlamaForCausalLM, LlavaMetaForCausalLM):
         teacher_image_features = self.model.teacher_vision_tower.vision_tower(images, output_hidden_states=True)
 
         for i in range(len(student_image_features.hidden_states)-1):
-            distill_loss += F.l1_loss(student_image_features.hidden_states[i], teacher_image_features.hidden_states[2*i])
+            distill_loss += F.mse_loss(student_image_features.hidden_states[i], teacher_image_features.hidden_states[2*i])
         distill_loss /= len(student_image_features.hidden_states)-1
 
         student_image_features = self.model.mm_projector(student_image_features.hidden_states[-2][:, 1:])
         teacher_image_features = self.model.teacher_mm_projector(teacher_image_features.hidden_states[-2][:, 1:])
-        distill_loss += F.l1_loss(student_image_features, teacher_image_features)
+        distill_loss += F.mse_loss(student_image_features, teacher_image_features)
 
         result = super().forward(
             input_ids=input_ids,

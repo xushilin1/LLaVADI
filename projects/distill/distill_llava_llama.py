@@ -39,28 +39,28 @@ class LlavaLlamaModel(LlavaMetaModel, LlamaModel):
         super(LlavaLlamaModel, self).__init__(config)
 
 
-class DistillLlavaLlamaForCausalLM(LlamaForCausalLM, LlavaMetaForCausalLM):
-    config_class = LlavaConfig
-
-    def __init__(self, config):
-        super(LlamaForCausalLM, self).__init__(config)
-        self.model = LlavaLlamaModel(config)
-        self.pretraining_tp = config.pretraining_tp
-        self.vocab_size = config.vocab_size
-        self.lm_head = nn.Linear(config.hidden_size, config.vocab_size, bias=False)
-
-        # Initialize weights and apply final processing
-        self.post_init()
-
-    def get_model(self):
-        return self.model
-
-    def encode_images(self, images):
-        image_features = self.get_model().get_vision_tower()(images, output_hidden_states=True)
-        image_features = image_features.hidden_states[-2]
-        image_features = self.get_model().mm_projector(image_features)
-        return image_features
+class DistillModel(nn.Module):
     
+
+    def __init__(self,
+                 student_model = None,
+                 student_tokenizer = None,
+                 teacher_model = None,
+                 teacher_tokenizer = None,):
+        super(DistillModel, self).__init__()
+        self.student_model = student_model
+        self.teacher_model = teacher_model
+        self.student_tokenizer = student_tokenizer
+        self.teacher_tokenizer = teacher_tokenizer
+
+    @property
+    def config(self):
+        return self.student_model.config
+    
+    @property
+    def gradient_checkpointing_enable(self):
+        return self.student_model.gradient_checkpointing_enable
+
     def forward(
         self,
         input_ids: torch.LongTensor = None,
@@ -76,37 +76,7 @@ class DistillLlavaLlamaForCausalLM(LlamaForCausalLM, LlavaMetaForCausalLM):
         return_dict: Optional[bool] = None,
     ) -> Union[Tuple, CausalLMOutputWithPast]:
 
-        if inputs_embeds is None:
-            (
-                input_ids,
-                position_ids,
-                attention_mask,
-                past_key_values,
-                inputs_embeds,
-                labels
-            ) = self.prepare_inputs_labels_for_multimodal(
-                input_ids,
-                position_ids,
-                attention_mask,
-                past_key_values,
-                labels,
-                images
-            )
-        distill_loss = 0
-        student_image_features = self.model.vision_tower(images, output_hidden_states=True)
-        student_image_features.hidden_states
-        
-        teacher_image_features = self.model.teacher_vision_tower.vision_tower(images, output_hidden_states=True)
-
-        for i in range(len(student_image_features.hidden_states)-1):
-            distill_loss += F.mse_loss(student_image_features.hidden_states[i], teacher_image_features.hidden_states[2*i])
-        distill_loss /= len(student_image_features.hidden_states)-1
-
-        student_image_features = self.model.mm_projector(student_image_features.hidden_states[-2][:, 1:])
-        teacher_image_features = self.model.teacher_mm_projector(teacher_image_features.hidden_states[-2][:, 1:])
-        distill_loss += F.mse_loss(student_image_features, teacher_image_features)
-
-        result = super().forward(
+        student_result = self.student_model(
             input_ids=input_ids,
             attention_mask=attention_mask,
             position_ids=position_ids,
@@ -115,25 +85,41 @@ class DistillLlavaLlamaForCausalLM(LlamaForCausalLM, LlavaMetaForCausalLM):
             labels=labels,
             use_cache=use_cache,
             output_attentions=output_attentions,
-            output_hidden_states=output_hidden_states,
+            output_hidden_states=True,
+            images=images,
             return_dict=return_dict
         )
+        teacher_result = self.teacher_model(
+            input_ids=input_ids,
+            attention_mask=attention_mask,
+            position_ids=position_ids,
+            past_key_values=past_key_values,
+            inputs_embeds=inputs_embeds,
+            labels=labels,
+            use_cache=use_cache,
+            output_attentions=output_attentions,
+            output_hidden_states=True,
+            images=images,
+            return_dict=return_dict
+        )
+        loss = student_result.loss
+        if True:
+            student_logits = student_result.logits[:, :-1, :].contiguous()
+            teacher_logits = teacher_result.logits[:, :-1, :].contiguous()
+            student_logits = student_logits.view(-1, student_logits.size(-1))
+            teacher_logits = teacher_logits.view(-1, teacher_logits.size(-1))
+            distill_loss = F.kl_div(
+                F.log_softmax(student_logits / 0.7, dim=-1),
+                F.softmax(teacher_logits / 0.7, dim=-1),
+                reduction='batchmean',
+            ) * 0.7 * 0.7
+            loss = loss + distill_loss
+            
+        
         return CausalLMOutputWithPast(
-            loss=result.loss + distill_loss,
-            logits=result.logits,
-            past_key_values=result.past_key_values,
-            hidden_states=result.hidden_states,
-            attentions=result.attentions,
+            loss=loss,
+            logits=student_result.logits,
+            past_key_values=student_result.past_key_values,
+            hidden_states=student_result.hidden_states,
+            attentions=student_result.attentions,
         )
-
-    def prepare_inputs_for_generation(self, input_ids, past_key_values=None, inputs_embeds=None, **kwargs):
-        images = kwargs.pop("images", None)
-        _inputs = super().prepare_inputs_for_generation(
-            input_ids, past_key_values=past_key_values, inputs_embeds=inputs_embeds, **kwargs
-        )
-        if images is not None:
-            _inputs['images'] = images
-        return _inputs
-
-AutoConfig.register("llava", LlavaConfig)
-AutoModelForCausalLM.register(LlavaConfig, DistillLlavaLlamaForCausalLM)

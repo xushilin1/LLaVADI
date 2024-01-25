@@ -5,9 +5,6 @@
 # Need to call this before importing transformers.
 from llava.train.llama_flash_attn_monkey_patch import replace_llama_attn_with_flash_attn
 
-replace_llama_attn_with_flash_attn()
-
-
 import os
 import copy
 from dataclasses import dataclass, field
@@ -25,17 +22,23 @@ from torch.utils.data import Dataset
 from llava.train.llava_trainer import LLaVATrainer
 
 from llava import conversation as conversation_lib
-
+from llava.model import *
 from llava.mm_utils import tokenizer_image_token
-from llava.train.train import ModelArguments, DataArguments, TrainingArguments
-from llava.train.train import find_all_linear_names, rank0_print, smart_tokenizer_and_embedding_resize, make_supervised_data_module
-from llava.train.train import get_peft_state_maybe_zero_3, get_peft_state_non_lora_maybe_zero_3, safe_save_model_for_hf_trainer
+
 from PIL import Image
-from transformers import AutoConfig, AutoModel, CLIPVisionModel
+from projects.distill.distill_llava_llama import DistillModel
 
-from projects.distill.distill_llava_llama import DistillLlavaLlamaForCausalLM
+local_rank = None
 
-if __name__ == "__main__":
+
+replace_llama_attn_with_flash_attn()
+
+from llava.train.train import rank0_print, ModelArguments, DataArguments, TrainingArguments
+from llava.train.train import find_all_linear_names, smart_tokenizer_and_embedding_resize, make_supervised_data_module
+from llava.train.train import get_peft_state_maybe_zero_3, get_peft_state_non_lora_maybe_zero_3
+from llava.train.train import get_mm_adapter_state_maybe_zero_3
+
+def train():
     global local_rank
 
     parser = transformers.HfArgumentParser(
@@ -45,13 +48,40 @@ if __name__ == "__main__":
     compute_dtype = (torch.float16 if training_args.fp16 else (torch.bfloat16 if training_args.bf16 else torch.float32))
 
     bnb_model_from_pretrained_args = {}
+    if training_args.bits in [4, 8]:
+        from transformers import BitsAndBytesConfig
+        bnb_model_from_pretrained_args.update(dict(
+            device_map={"": training_args.device},
+            load_in_4bit=training_args.bits == 4,
+            load_in_8bit=training_args.bits == 8,
+            quantization_config=BitsAndBytesConfig(
+                load_in_4bit=training_args.bits == 4,
+                load_in_8bit=training_args.bits == 8,
+                llm_int8_skip_modules=["mm_projector"],
+                llm_int8_threshold=6.0,
+                llm_int8_has_fp16_weight=False,
+                bnb_4bit_compute_dtype=compute_dtype,
+                bnb_4bit_use_double_quant=training_args.double_quant,
+                bnb_4bit_quant_type=training_args.quant_type # {'fp4', 'nf4'}
+            )
+        ))
 
     if model_args.vision_tower is not None:
-        model = DistillLlavaLlamaForCausalLM.from_pretrained(
-            model_args.model_name_or_path,
-            cache_dir=training_args.cache_dir,
-            **bnb_model_from_pretrained_args
-        )
+        if 'mpt' in model_args.model_name_or_path:
+            config = transformers.AutoConfig.from_pretrained(model_args.model_name_or_path, trust_remote_code=True)
+            config.attn_config['attn_impl'] = training_args.mpt_attn_impl
+            model = LlavaMPTForCausalLM.from_pretrained(
+                model_args.model_name_or_path,
+                config=config,
+                cache_dir=training_args.cache_dir,
+                **bnb_model_from_pretrained_args
+            )
+        else:
+            model = LlavaLlamaForCausalLM.from_pretrained(
+                model_args.model_name_or_path,
+                cache_dir=training_args.cache_dir,
+                **bnb_model_from_pretrained_args
+            )
     else:
         model = transformers.LlamaForCausalLM.from_pretrained(
             model_args.model_name_or_path,
@@ -62,6 +92,11 @@ if __name__ == "__main__":
 
     if model_args.freeze_backbone:
         model.model.requires_grad_(False)
+
+    if training_args.bits in [4, 8]:
+        from peft import prepare_model_for_kbit_training
+        model.config.torch_dtype=(torch.float32 if training_args.fp16 else (torch.bfloat16 if training_args.bf16 else torch.float32))
+        model = prepare_model_for_kbit_training(model, use_gradient_checkpointing=training_args.gradient_checkpointing)
 
     if training_args.gradient_checkpointing:
         if hasattr(model, "enable_input_require_grads"):
@@ -88,14 +123,22 @@ if __name__ == "__main__":
                 model.to(torch.float16)
         rank0_print("Adding LoRA adapters...")
         model = get_peft_model(model, lora_config)
-    
-    tokenizer = transformers.AutoTokenizer.from_pretrained(
-        model_args.model_name_or_path,
-        cache_dir=training_args.cache_dir,
-        model_max_length=training_args.model_max_length,
-        padding_side="right",
-        use_fast=False,
-    )
+
+    if 'mpt' in model_args.model_name_or_path:
+        tokenizer = transformers.AutoTokenizer.from_pretrained(
+            model_args.model_name_or_path,
+            cache_dir=training_args.cache_dir,
+            model_max_length=training_args.model_max_length,
+            padding_side="right"
+        )
+    else:
+        tokenizer = transformers.AutoTokenizer.from_pretrained(
+            model_args.model_name_or_path,
+            cache_dir=training_args.cache_dir,
+            model_max_length=training_args.model_max_length,
+            padding_side="right",
+            use_fast=False,
+        )
 
     if model_args.version == "v0":
         if tokenizer.pad_token is None:
@@ -118,23 +161,11 @@ if __name__ == "__main__":
             model_args=model_args,
             fsdp=training_args.fsdp
         )
-        teacher_vision_tower = model.get_vision_tower()
-        teacher_vision_tower.to(dtype=compute_dtype, device=training_args.device)
+        
+        vision_tower = model.get_vision_tower()
+        vision_tower.to(dtype=compute_dtype, device=training_args.device)
 
-        model.get_model().teacher_vision_tower = teacher_vision_tower
-        model.get_model().teacher_mm_projector = copy.deepcopy(model.get_model().mm_projector)
-        model.get_model().teacher_vision_tower.requires_grad_(False)
-        model.get_model().teacher_mm_projector.requires_grad_(False)
-
-        config = copy.deepcopy(teacher_vision_tower.config)
-        config.num_hidden_layers = 12
-        # config.vision_config.num_attention_heads = 8
-        stu_vision_tower = CLIPVisionModel(config)
-        stu_vision_tower.to(dtype=compute_dtype, device=training_args.device)
-        model.get_model().vision_tower = stu_vision_tower
-        # model.get_model().mm_projector
-
-        data_args.image_processor = teacher_vision_tower.image_processor
+        data_args.image_processor = vision_tower.image_processor
         data_args.is_multimodal = True
 
         model.config.image_aspect_ratio = data_args.image_aspect_ratio
@@ -152,6 +183,8 @@ if __name__ == "__main__":
             for p in model.get_model().mm_projector.parameters():
                 p.requires_grad = False
 
+        if training_args.bits in [4, 8]:
+            model.get_model().mm_projector.to(dtype=compute_dtype, device=training_args.device)
 
         model.config.mm_use_im_start_end = data_args.mm_use_im_start_end = model_args.mm_use_im_start_end
         model.config.mm_projector_lr = training_args.mm_projector_lr
@@ -159,8 +192,42 @@ if __name__ == "__main__":
         model.config.mm_use_im_patch_token = model_args.mm_use_im_patch_token
         model.initialize_vision_tokenizer(model_args, tokenizer=tokenizer)
 
+    if training_args.bits in [4, 8]:
+        from peft.tuners.lora import LoraLayer
+        for name, module in model.named_modules():
+            if isinstance(module, LoraLayer):
+                if training_args.bf16:
+                    module = module.to(torch.bfloat16)
+            if 'norm' in name:
+                module = module.to(torch.float32)
+            if 'lm_head' in name or 'embed_tokens' in name:
+                if hasattr(module, 'weight'):
+                    if training_args.bf16 and module.weight.dtype == torch.float32:
+                        module = module.to(torch.bfloat16)
+
     data_module = make_supervised_data_module(tokenizer=tokenizer,
                                               data_args=data_args)
+    teacher_model = LlavaLlamaForCausalLM.from_pretrained(
+        "checkpoints/llava-v1.5-13b",
+    )
+    teacher_tokenizer = transformers.AutoTokenizer.from_pretrained(
+        "checkpoints/llava-v1.5-13b",
+        model_max_length=training_args.model_max_length,
+        use_fast=False,
+        padding_side="right"
+    )
+    teacher_vision_tower = teacher_model.get_vision_tower()
+    if not teacher_vision_tower.is_loaded:
+        teacher_vision_tower.load_model()
+    teacher_model.to(device=training_args.device, dtype=compute_dtype)
+    teacher_model.requires_grad_(False)
+
+    model = DistillModel(
+                student_model=model,
+                student_tokenizer=tokenizer,
+                teacher_model=teacher_model,
+                teacher_tokenizer=teacher_tokenizer,
+            )
     trainer = LLaVATrainer(model=model,
                     tokenizer=tokenizer,
                     args=training_args,
@@ -188,3 +255,45 @@ if __name__ == "__main__":
     else:
         safe_save_model_for_hf_trainer(trainer=trainer,
                                        output_dir=training_args.output_dir)
+
+
+def safe_save_model_for_hf_trainer(trainer: transformers.Trainer,
+                                   output_dir: str):
+    """Collects the state dict and dump to disk."""
+
+    if getattr(trainer.args, "tune_mm_mlp_adapter", False):
+        # Only save Adapter
+        keys_to_match = ['mm_projector']
+        if getattr(trainer.args, "use_im_start_end", False):
+            keys_to_match.extend(['embed_tokens', 'embed_in'])
+
+        weight_to_save = get_mm_adapter_state_maybe_zero_3(trainer.model.student_model.named_parameters(), keys_to_match)
+        trainer.model.student_model.config.save_pretrained(output_dir)
+
+        current_folder = output_dir.split('/')[-1]
+        parent_folder = os.path.dirname(output_dir)
+        if trainer.args.local_rank == 0 or trainer.args.local_rank == -1:
+            if current_folder.startswith('checkpoint-'):
+                mm_projector_folder = os.path.join(parent_folder, "mm_projector")
+                os.makedirs(mm_projector_folder, exist_ok=True)
+                torch.save(weight_to_save, os.path.join(mm_projector_folder, f'{current_folder}.bin'))
+            else:
+                torch.save(weight_to_save, os.path.join(output_dir, f'mm_projector.bin'))
+        return
+
+    if trainer.deepspeed:
+        torch.cuda.synchronize()
+        trainer.save_model(output_dir)
+        return
+
+    state_dict = trainer.model.student_model.state_dict()
+    if trainer.args.should_save:
+        cpu_state_dict = {
+            key: value.cpu()
+            for key, value in state_dict.items()
+        }
+        del state_dict
+        trainer._save(output_dir, state_dict=cpu_state_dict)  # noqa
+
+if __name__ == "__main__":
+    train()

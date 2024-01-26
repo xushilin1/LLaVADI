@@ -28,16 +28,6 @@ from llava.model.llava_arch import LlavaMetaModel, LlavaMetaForCausalLM
 
 import torch.nn.functional as F
 
-class LlavaConfig(LlamaConfig):
-    model_type = "llava"
-
-
-class LlavaLlamaModel(LlavaMetaModel, LlamaModel):
-    config_class = LlavaConfig
-
-    def __init__(self, config: LlamaConfig):
-        super(LlavaLlamaModel, self).__init__(config)
-
 
 class DistillModel(nn.Module):
     
@@ -60,6 +50,13 @@ class DistillModel(nn.Module):
     @property
     def gradient_checkpointing_enable(self):
         return self.student_model.gradient_checkpointing_enable
+
+    def state_dict(self, *args, destination=None, prefix='', keep_vars=False):
+        destination = self.student_model.state_dict(*args, destination=destination, prefix=prefix, keep_vars=keep_vars)
+        return destination
+        # for param_name, lora_name in self.params_with_lora.items():
+        #     destination[prefix + param_name] = eval(f'self.{param_name}').data
+        # return destination
 
     def forward(
         self,

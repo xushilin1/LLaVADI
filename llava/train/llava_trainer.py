@@ -2,7 +2,7 @@ import os
 import torch
 
 from torch.utils.data import Sampler
-
+from transformers.modeling_utils import PreTrainedModel
 from transformers import Trainer
 from transformers.trainer import (
     is_sagemaker_mp_enabled,
@@ -256,6 +256,11 @@ class LLaVATrainer(Trainer):
                 torch.save(weight_to_save, os.path.join(output_dir, f'mm_projector.bin'))
         else:
             super(LLaVATrainer, self)._save_checkpoint(model, trial, metrics)
+    
+    def save_model(self, output_dir: Optional[str] = None, _internal_call: bool = False):
+        if not isinstance(self.model, PreTrainedModel):
+            self.model = self.model.student_model
+        return super().save_model(output_dir, _internal_call)
 
     def _save(self, output_dir: Optional[str] = None, state_dict=None):
         if getattr(self.args, 'tune_mm_mlp_adapter', False):

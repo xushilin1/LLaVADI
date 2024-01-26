@@ -100,22 +100,24 @@ class DistillModel(nn.Module):
             images=images,
             return_dict=return_dict
         )
-        loss = student_result.loss
+        distill_loss = 0
         if True:
+            valid_num = (labels != -100).sum(-1)
             student_logits = student_result.logits[:, :-1, :].contiguous()
             teacher_logits = teacher_result.logits[:, :-1, :].contiguous()
-            student_logits = student_logits.view(-1, student_logits.size(-1))
-            teacher_logits = teacher_logits.view(-1, teacher_logits.size(-1))
-            distill_loss = F.kl_div(
-                F.log_softmax(student_logits / 0.7, dim=-1),
-                F.softmax(teacher_logits / 0.7, dim=-1),
-                reduction='batchmean',
-            ) * 0.7 * 0.7
-            loss = loss + distill_loss
-            
+
+            for i in range(valid_num.shape[0]):
+                student_logit = student_logits[i, -valid_num[i]:, :]
+                teacher_logit = teacher_logits[i, -valid_num[i]:, :]
+                distill_loss += F.kl_div(
+                    F.log_softmax(student_logit / 0.7, dim=-1),
+                    F.softmax(teacher_logit / 0.7, dim=-1),
+                    reduction='batchmean',
+                ) * 0.7 * 0.7
+            distill_loss /= valid_num.shape[0]
         
         return CausalLMOutputWithPast(
-            loss=loss,
+            loss=student_result.loss + distill_loss,
             logits=student_result.logits,
             past_key_values=student_result.past_key_values,
             hidden_states=student_result.hidden_states,

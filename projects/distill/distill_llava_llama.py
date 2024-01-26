@@ -89,6 +89,7 @@ class DistillModel(nn.Module):
             images=images,
             return_dict=return_dict
         )
+        torch.cuda.empty_cache()
         teacher_result = self.teacher_model(
             input_ids=input_ids,
             attention_mask=attention_mask,

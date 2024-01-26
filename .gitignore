@@ -1,6 +1,8 @@
 checkpoints
 datasets
 output
+playground/data/eval/MME/MME_Benchmark_release_version
+answers
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]

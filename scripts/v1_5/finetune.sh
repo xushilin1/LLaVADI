@@ -1,9 +1,25 @@
 #!/bin/bash
+# SBATCH --job-name=test-nodes        # name
+# SBATCH --nodes=1                    # nodes
+# SBATCH --ntasks-per-node=1          # crucial - only 1 task per dist per node!
+# SBATCH --cpus-per-task=10           # number of cores per tasks
+# SBATCH --gres=gpu:8                 # number of gpus
+# SBATCH --time 20:00:00              # maximum execution time (HH:MM:SS)
+# SBATCH --output=%x-%j.out           # output file name
+# SBATCH --partition=s1_mm_research
+# SBATCH --quotatype=auto
+
+export GPUS_PER_NODE=8
+export MASTER_ADDR=$(scontrol show hostnames $SLURM_JOB_NODELIST | head -n 1)
+export MASTER_PORT=9901
+
 PYTHONPATH='.' \
-srun -p s1_mm_research --ntasks-per-node=1 --gres=gpu:8 --cpus-per-task=10 --nodes=1 \
-deepspeed llava/train/train_mem.py \
+srun --jobid $SLURM_JOBID bash -c 'python -m torch.distributed.run \
+ --nproc_per_node $GPUS_PER_NODE --nnodes $SLURM_NNODES --node_rank $SLURM_PROCID \
+ --master_addr $MASTER_ADDR --master_port $MASTER_PORT \
+llava/train/train_mem.py \
     --deepspeed ./scripts/zero3.json \
-    --model_name_or_path checkpoints/vicuna-13b-v1.5 \
+    --model_name_or_path checkpoints/MobileLLaMA-2.7B-Chat \
     --version v1 \
     --data_path datasets/LLaVA-Instruct-150K/llava_v1_5_mix665k.json \
     --image_folder ./datasets \
@@ -34,4 +50,4 @@ deepspeed llava/train/train_mem.py \
     --model_max_length 2048 \
     --gradient_checkpointing True \
     --dataloader_num_workers 4 \
-    --lazy_preprocess True
+    --lazy_preprocess True'

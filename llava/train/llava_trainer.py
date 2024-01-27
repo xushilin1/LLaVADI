@@ -266,4 +266,6 @@ class LLaVATrainer(Trainer):
         if getattr(self.args, 'tune_mm_mlp_adapter', False):
             pass
         else:
+            if not isinstance(self.deepspeed.module, PreTrainedModel):
+                state_dict = {k[14:]:v for k,v in state_dict.items() if 'teacher' not in k}
             super(LLaVATrainer, self)._save(output_dir, state_dict)

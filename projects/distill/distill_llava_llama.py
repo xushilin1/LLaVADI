@@ -33,11 +33,13 @@ class DistillModel(nn.Module):
     
 
     def __init__(self,
+                 args,
                  student_model = None,
                  student_tokenizer = None,
                  teacher_model = None,
                  teacher_tokenizer = None,):
         super(DistillModel, self).__init__()
+        self.args = args
         self.student_model = student_model
         self.teacher_model = teacher_model
         self.student_tokenizer = student_tokenizer
@@ -73,20 +75,6 @@ class DistillModel(nn.Module):
         return_dict: Optional[bool] = None,
     ) -> Union[Tuple, CausalLMOutputWithPast]:
 
-        student_result = self.student_model(
-            input_ids=input_ids,
-            attention_mask=attention_mask,
-            position_ids=position_ids,
-            past_key_values=past_key_values,
-            inputs_embeds=inputs_embeds,
-            labels=labels,
-            use_cache=use_cache,
-            output_attentions=output_attentions,
-            output_hidden_states=True,
-            images=images,
-            return_dict=return_dict
-        )
-        torch.cuda.empty_cache()
         teacher_result = self.teacher_model(
             input_ids=input_ids,
             attention_mask=attention_mask,
@@ -100,8 +88,98 @@ class DistillModel(nn.Module):
             images=images,
             return_dict=return_dict
         )
-        distill_loss = 0
+
+        (
+            stu_input_ids,
+            stu_position_ids,
+            stu_attention_mask,
+            stu_past_key_values,
+            stu_inputs_embeds,
+            stu_labels
+        ) = self.student_model.prepare_inputs_labels_for_multimodal(
+            input_ids,
+            position_ids,
+            attention_mask,
+            past_key_values,
+            labels,
+            images
+        )
+        
+
+        assert all((input_ids == -200).sum(-1) == 1) # only one image per conversation
         if True:
+            teacher_input_embeds = teacher_result.hidden_states[0] #(bs, 657, 5120)
+            teacher_last_embeds = teacher_result.hidden_states[-1]
+            stu_inputs_embeds = stu_inputs_embeds.split(1)
+            stu_attention_mask = stu_attention_mask.split(1)
+            stu_labels = stu_labels.split(1)
+            
+            new_stu_inputs_embeds = []
+            new_stu_attention_mask = []
+            new_stu_labels = []
+
+            for batch_idx, cur_input_ids in enumerate(input_ids):
+                # system + image + user: + assistant:
+                cur_labels = labels[batch_idx]
+                # FIXME: remove the padding tokens
+                num_ans_token = (cur_labels != IGNORE_INDEX).sum() + (attention_mask[batch_idx] == 0).sum()
+                num_img_token = teacher_input_embeds.shape[1] - cur_input_ids.shape[0] + 1
+                
+                image_token_indices = torch.where(cur_input_ids == IMAGE_TOKEN_INDEX)[0].item()
+                image_masks = torch.zeros(teacher_input_embeds.shape[1], dtype=torch.bool)
+                answer_masks = torch.zeros(teacher_input_embeds.shape[1], dtype=torch.bool)
+                
+                image_masks[image_token_indices:image_token_indices+num_img_token] = True
+                answer_masks[-num_ans_token:] = True
+
+                image_embed = teacher_input_embeds[batch_idx][image_masks]
+                answer_embed = teacher_last_embeds[batch_idx][answer_masks]
+
+                score = torch.matmul(image_embed, answer_embed.T) # (num_img_token, num_ans_token)
+                score = score.softmax(dim=-1)
+                select_idx = score.view(-1).argsort(descending=True)[:self.args.select_k] // num_ans_token
+                # select_idx = select_idx.unique()
+                
+                
+                # student embeddings
+                stu_select_img_token = stu_inputs_embeds[batch_idx][0][image_masks][select_idx]
+                new_stu_inputs_embeds.append(
+                    torch.cat([stu_inputs_embeds[batch_idx][0][:image_token_indices], 
+                               stu_select_img_token, 
+                               stu_inputs_embeds[batch_idx][0][image_token_indices:]]
+                    )
+                )
+                new_stu_attention_mask.append(
+                    torch.cat([stu_attention_mask[batch_idx][0][:image_token_indices], 
+                               stu_attention_mask[batch_idx][0].new_ones(stu_select_img_token.shape[0]),
+                               stu_attention_mask[batch_idx][0][image_token_indices:]]
+                    )
+                )
+                new_stu_labels.append(
+                    torch.cat([stu_labels[batch_idx][0][:image_token_indices], 
+                               stu_labels[batch_idx][0].new_ones(stu_select_img_token.shape[0]) * IGNORE_INDEX,
+                               stu_labels[batch_idx][0][image_token_indices:]]
+                    )
+                )
+        stu_inputs_embeds = torch.stack(new_stu_inputs_embeds, dim=0)
+        stu_attention_mask = torch.stack(new_stu_attention_mask, dim=0)
+        stu_labels = torch.stack(new_stu_labels, dim=0)
+
+        student_result = self.student_model.forward(
+            input_ids=stu_input_ids,
+            attention_mask=stu_attention_mask,
+            position_ids=stu_position_ids,
+            past_key_values=stu_past_key_values,
+            inputs_embeds=stu_inputs_embeds,
+            labels=stu_labels,
+            use_cache=use_cache,
+            output_attentions=output_attentions,
+            output_hidden_states=True,
+            images=images,
+            return_dict=return_dict
+        )
+        distill_loss = 0
+        if self.args.align_logits:
             valid_num = (labels != -100).sum(-1)
             student_logits = student_result.logits[:, :-1, :].contiguous()
             teacher_logits = teacher_result.logits[:, :-1, :].contiguous()

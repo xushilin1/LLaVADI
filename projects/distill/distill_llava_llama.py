@@ -75,13 +75,29 @@ class DistillModel(nn.Module):
         return_dict: Optional[bool] = None,
     ) -> Union[Tuple, CausalLMOutputWithPast]:
 
-        teacher_result = self.teacher_model(
-            input_ids=input_ids,
-            attention_mask=attention_mask,
-            position_ids=position_ids,
-            past_key_values=past_key_values,
-            inputs_embeds=inputs_embeds,
-            labels=labels,
+        (
+            teacher_input_ids,
+            teacher_position_ids,
+            teacher_attention_mask,
+            teacher_past_key_values,
+            teacher_inputs_embeds,
+            teacher_labels
+        ) = self.teacher_model.prepare_inputs_labels_for_multimodal(
+            input_ids,
+            position_ids,
+            attention_mask,
+            past_key_values,
+            labels,
+            images
+        )
+
+        teacher_result = self.student_model.forward(
+            input_ids=teacher_input_ids,
+            attention_mask=teacher_attention_mask,
+            position_ids=teacher_position_ids,
+            past_key_values=teacher_past_key_values,
+            inputs_embeds=teacher_inputs_embeds,
+            labels=teacher_labels,
             use_cache=use_cache,
             output_attentions=output_attentions,
             output_hidden_states=True,
@@ -130,7 +146,9 @@ class DistillModel(nn.Module):
                     image_masks = torch.zeros(teacher_input_embeds.shape[1], dtype=torch.bool)  
                     image_masks[image_token_indices:image_token_indices+num_img_token] = True
                     
-                    answer_masks = (stu_labels[batch_idx] != IGNORE_INDEX)[0]
+                    # FIXME: why stu_labels and teacher_labels are differet???
+                    # answer_masks = (stu_labels[batch_idx] != IGNORE_INDEX)[0]
+                    answer_masks = (teacher_labels[batch_idx] != IGNORE_INDEX)[0]
                     num_ans_token = answer_masks.sum()
 
                     image_embed = teacher_input_embeds[batch_idx][image_masks]

@@ -104,9 +104,7 @@ class DistillModel(nn.Module):
             labels,
             images
         )
-        
 
-        assert all((input_ids == -200).sum(-1) == 1) # only one image per conversation
         if True:
             teacher_input_embeds = teacher_result.hidden_states[0] #(bs, 657, 5120)
             teacher_last_embeds = teacher_result.hidden_states[-1]
@@ -119,30 +117,34 @@ class DistillModel(nn.Module):
             new_stu_labels = []
 
             for batch_idx, cur_input_ids in enumerate(input_ids):
-                # system + image + user: + assistant:
-                cur_labels = labels[batch_idx]
-                # FIXME: remove the padding tokens
-                num_ans_token = (cur_labels != IGNORE_INDEX).sum() + (attention_mask[batch_idx] == 0).sum()
-                num_img_token = teacher_input_embeds.shape[1] - cur_input_ids.shape[0] + 1
-                
-                image_token_indices = torch.where(cur_input_ids == IMAGE_TOKEN_INDEX)[0].item()
-                image_masks = torch.zeros(teacher_input_embeds.shape[1], dtype=torch.bool)
-                answer_masks = torch.zeros(teacher_input_embeds.shape[1], dtype=torch.bool)
-                
-                image_masks[image_token_indices:image_token_indices+num_img_token] = True
-                answer_masks[-num_ans_token:] = True
+                if (cur_input_ids == IMAGE_TOKEN_INDEX).sum() == 0: # no image in conversation
+                    stu_select_img_token = stu_inputs_embeds[0].new_zeros((self.args.select_k, self.config.hidden_size))
+                    stu_select_attention_mask = stu_attention_mask[0].new_zeros(self.args.select_k)
+                    stu_select_labels = stu_labels[0].new_ones(self.args.select_k) * IGNORE_INDEX
+                    image_token_indices = 35
+                else:
+                    # num_img_token = teacher_input_embeds.shape[1] - cur_input_ids.shape[0] + 1
+                    num_img_token = 576  # HACK: hardcode
+                    image_token_indices = torch.where(cur_input_ids == IMAGE_TOKEN_INDEX)[0].item()
 
-                image_embed = teacher_input_embeds[batch_idx][image_masks]
-                answer_embed = teacher_last_embeds[batch_idx][answer_masks]
+                    image_masks = torch.zeros(teacher_input_embeds.shape[1], dtype=torch.bool)  
+                    image_masks[image_token_indices:image_token_indices+num_img_token] = True
+                    
+                    answer_masks = (stu_labels[batch_idx] != IGNORE_INDEX)[0]
+                    num_ans_token = answer_masks.sum()
 
-                score = torch.matmul(image_embed, answer_embed.T) # (num_img_token, num_ans_token)
-                score = score.softmax(dim=-1)
-                select_idx = score.view(-1).argsort(descending=True)[:self.args.select_k] // num_ans_token
-                # select_idx = select_idx.unique()
+                    image_embed = teacher_input_embeds[batch_idx][image_masks]
+                    answer_embed = teacher_last_embeds[batch_idx][answer_masks]
+
+                    score = torch.matmul(image_embed, answer_embed.T) # (num_img_token, num_ans_token)
+                    score = score.softmax(dim=-1)
+                    select_idx = score.view(-1).argsort(descending=True)[:self.args.select_k] // num_ans_token
+                               
+                    # student embeddings
+                    stu_select_img_token = stu_inputs_embeds[batch_idx][0][image_masks][select_idx]
+                    stu_select_attention_mask = stu_attention_mask[batch_idx][0].new_ones(stu_select_img_token.shape[0])
+                    stu_select_labels = stu_labels[batch_idx][0].new_ones(stu_select_img_token.shape[0]) * IGNORE_INDEX
                 
-                
-                # student embeddings
-                stu_select_img_token = stu_inputs_embeds[batch_idx][0][image_masks][select_idx]
                 new_stu_inputs_embeds.append(
                     torch.cat([stu_inputs_embeds[batch_idx][0][:image_token_indices], 
                                stu_select_img_token, 
@@ -151,13 +153,13 @@ class DistillModel(nn.Module):
                 )
                 new_stu_attention_mask.append(
                     torch.cat([stu_attention_mask[batch_idx][0][:image_token_indices], 
-                               stu_attention_mask[batch_idx][0].new_ones(stu_select_img_token.shape[0]),
+                               stu_select_attention_mask,
                                stu_attention_mask[batch_idx][0][image_token_indices:]]
                     )
                 )
                 new_stu_labels.append(
                     torch.cat([stu_labels[batch_idx][0][:image_token_indices], 
-                               stu_labels[batch_idx][0].new_ones(stu_select_img_token.shape[0]) * IGNORE_INDEX,
+                               stu_select_labels,
                                stu_labels[batch_idx][0][image_token_indices:]]
                     )
                 )

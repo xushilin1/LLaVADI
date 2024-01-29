@@ -249,6 +249,16 @@ def train():
     teacher_model = LlavaLlamaForCausalLM.from_pretrained(
         "checkpoints/llava-v1.5-13b",
     )
+
+    teacher_model.config.use_cache = False
+    teacher_model.config.image_aspect_ratio = data_args.image_aspect_ratio
+    teacher_model.config.tokenizer_padding_side = tokenizer.padding_side
+    teacher_model.config.tokenizer_model_max_length = tokenizer.model_max_length
+
+    teacher_model.config.mm_use_im_start_end = data_args.mm_use_im_start_end = model_args.mm_use_im_start_end
+    teacher_model.config.mm_projector_lr = training_args.mm_projector_lr
+    teacher_model.config.mm_use_im_patch_token = model_args.mm_use_im_patch_token
+
     teacher_tokenizer = transformers.AutoTokenizer.from_pretrained(
         "checkpoints/llava-v1.5-13b",
         model_max_length=training_args.model_max_length,

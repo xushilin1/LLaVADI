@@ -75,6 +75,7 @@ class TrainingArguments(transformers.TrainingArguments):
     group_by_modality_length: bool = field(default=False)
     select_k: int = 16
     align_logits: bool = False
+    align_image_tokens: bool = False
 
 def train():
     global local_rank

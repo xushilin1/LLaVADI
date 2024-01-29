@@ -121,7 +121,7 @@ class DistillModel(nn.Module):
             images
         )
 
-        if True:
+        if self.args.align_image_tokens:
             teacher_input_embeds = teacher_result.hidden_states[0] #(bs, 657, 5120)
             teacher_last_embeds = teacher_result.hidden_states[-1]
             
@@ -178,9 +178,9 @@ class DistillModel(nn.Module):
                                stu_labels[batch_idx][image_token_indices:]]
                     )
                 )
-        stu_inputs_embeds = torch.stack(new_stu_inputs_embeds, dim=0)
-        stu_attention_mask = torch.stack(new_stu_attention_mask, dim=0)
-        stu_labels = torch.stack(new_stu_labels, dim=0)
+            stu_inputs_embeds = torch.stack(new_stu_inputs_embeds, dim=0)
+            stu_attention_mask = torch.stack(new_stu_attention_mask, dim=0)
+            stu_labels = torch.stack(new_stu_labels, dim=0)
 
         student_result = self.student_model.forward(
             input_ids=stu_input_ids,
@@ -197,19 +197,21 @@ class DistillModel(nn.Module):
         )
         distill_loss = 0
         if self.args.align_logits:
-            valid_num = (labels != -100).sum(-1)
-            student_logits = student_result.logits[:, :-1, :].contiguous()
-            teacher_logits = teacher_result.logits[:, :-1, :].contiguous()
-
-            for i in range(valid_num.shape[0]):
-                student_logit = student_logits[i, -valid_num[i]:, :]
-                teacher_logit = teacher_logits[i, -valid_num[i]:, :]
+            for i in range(labels.shape[0]):
+                stu_shift_logits = student_result.logits[i, :-1, :].contiguous()
+                stu_shift_labels = stu_labels[i, 1:].contiguous()
+                stu_logits = stu_shift_logits[stu_shift_labels != IGNORE_INDEX]
+                
+                teacher_shift_logits = teacher_result.logits[i, :-1, :].contiguous()
+                teacher_shift_labels = teacher_labels[i, 1:].contiguous()
+                teacher_logits = teacher_shift_logits[teacher_shift_labels != IGNORE_INDEX]
+                
                 distill_loss += F.kl_div(
-                    F.log_softmax(student_logit / 0.7, dim=-1),
-                    F.softmax(teacher_logit / 0.7, dim=-1),
+                    F.log_softmax(stu_logits / 0.7, dim=-1),
+                    F.softmax(teacher_logits / 0.7, dim=-1),
                     reduction='batchmean',
                 ) * 0.7 * 0.7
-            distill_loss /= valid_num.shape[0]
+            distill_loss /= labels.shape[0]
         
         return CausalLMOutputWithPast(
             loss=student_result.loss + distill_loss,

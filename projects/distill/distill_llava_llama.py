@@ -255,7 +255,7 @@ class DistillModel(nn.Module):
             image_masks = torch.stack(image_masks, dim=0).unsqueeze(2)
             answer_masks = torch.stack(answer_masks, dim=0).unsqueeze(1)
             masks = image_masks * answer_masks
-            affinity_loss = (affinity_loss * masks).sum() / masks.sum()
+            affinity_loss = (affinity_loss * masks).sum() / (masks.sum() + 1e-6)
 
             loss += affinity_loss
 

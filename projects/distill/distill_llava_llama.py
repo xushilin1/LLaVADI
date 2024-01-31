@@ -212,11 +212,15 @@ class DistillModel(nn.Module):
                 teacher_shift_labels = teacher_labels[i, 1:].contiguous()
                 teacher_logits = teacher_shift_logits[teacher_shift_labels != IGNORE_INDEX]
                 
-                distill_loss += F.kl_div(
-                    F.log_softmax(stu_logits / 0.7, dim=-1),
-                    F.softmax(teacher_logits / 0.7, dim=-1),
-                    reduction='batchmean',
-                ) * 0.7 * 0.7
+                if self.args.mse_distill:
+                    import torch.nn.functional as F
+                    distill_loss += F.mse_loss(stu_logits, teacher_logits)
+                else:
+                    distill_loss += F.kl_div(
+                        F.log_softmax(stu_logits / 0.7, dim=-1),
+                        F.softmax(teacher_logits / 0.7, dim=-1),
+                        reduction='batchmean',
+                    ) * 0.7 * 0.7
             distill_loss /= labels.shape[0]
         
         return CausalLMOutputWithPast(

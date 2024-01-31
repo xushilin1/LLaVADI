@@ -76,6 +76,7 @@ class TrainingArguments(transformers.TrainingArguments):
     select_k: int = 16
     align_logits: bool = False
     align_image_tokens: bool = False
+    align_affinity: bool = False
     mse_distill: bool = False
 
 def train():

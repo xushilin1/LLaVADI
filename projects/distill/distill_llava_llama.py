@@ -143,8 +143,6 @@ class DistillModel(nn.Module):
                     image_masks = torch.zeros(teacher_input_embeds.shape[1], dtype=torch.bool)  
                     image_masks[image_token_indices:image_token_indices+num_img_token] = True
                     
-                    # FIXME: why stu_labels and teacher_labels are different ???
-                    # answer_masks = (stu_labels[batch_idx] != IGNORE_INDEX)[0]
                     answer_masks = (teacher_labels[batch_idx] != IGNORE_INDEX)
                     num_ans_token = answer_masks.sum()
                     if num_ans_token == 0:
@@ -201,8 +199,11 @@ class DistillModel(nn.Module):
             images=images,
             return_dict=return_dict
         )
-        distill_loss = 0
+        
+        loss = student_result.loss
+        
         if self.args.align_logits:
+            distill_loss = 0
             for i in range(labels.shape[0]):
                 stu_shift_logits = student_result.logits[i, :-1, :].contiguous()
                 stu_shift_labels = stu_labels[i, 1:].contiguous()
@@ -213,7 +214,6 @@ class DistillModel(nn.Module):
                 teacher_logits = teacher_shift_logits[teacher_shift_labels != IGNORE_INDEX]
                 
                 if self.args.mse_distill:
-                    import torch.nn.functional as F
                     distill_loss += F.mse_loss(stu_logits, teacher_logits)
                 else:
                     distill_loss += F.kl_div(
@@ -222,9 +222,45 @@ class DistillModel(nn.Module):
                         reduction='batchmean',
                     ) * 0.7 * 0.7
             distill_loss /= labels.shape[0]
+            loss += distill_loss
         
+        if self.args.align_affinity:
+            select_layer = [-1] # HACK here
+            teacher_embeds = torch.stack(teacher_result.hidden_states, dim=1) #(bs, layers, N, 5120)
+            student_embeds = torch.stack(student_result.hidden_states, dim=1) #(bs, layers, N, 2048)
+
+            teacher_embeds = teacher_embeds[:, select_layer, :, :]
+            student_embeds = student_embeds[:, select_layer, :, :]
+            teacher_embeds = F.normalize(teacher_embeds, dim=-1)
+            student_embeds = F.normalize(student_embeds, dim=-1)
+            teacher_affinity = teacher_embeds @ teacher_embeds.transpose(-1, -2)
+            student_affinity = student_embeds @ student_embeds.transpose(-1, -2)
+
+            image_masks, answer_masks = [], []
+            for batch_idx, cur_input_ids in enumerate(input_ids):
+                img_mask = teacher_embeds.new_zeros(teacher_embeds.shape[2], dtype=torch.bool)
+                ans_mask = teacher_embeds.new_zeros(teacher_embeds.shape[2], dtype=torch.bool)
+                if (cur_input_ids == IMAGE_TOKEN_INDEX).sum() == 0: # no image in conversation
+                    pass
+                else:
+                    num_img_token = 576
+                    image_token_indices = torch.where(cur_input_ids == IMAGE_TOKEN_INDEX)[0].item()
+                    img_mask[image_token_indices:image_token_indices+num_img_token] = True
+                    ans_mask = stu_labels[batch_idx] != IGNORE_INDEX
+                    ans_mask = ans_mask & stu_attention_mask[batch_idx] # remove padding
+                image_masks.append(img_mask)
+                answer_masks.append(ans_mask)
+
+            affinity_loss = F.mse_loss(student_affinity, teacher_affinity, reduction='none')
+            image_masks = torch.stack(image_masks, dim=0).unsqueeze(2)
+            answer_masks = torch.stack(answer_masks, dim=0).unsqueeze(1)
+            masks = image_masks * answer_masks
+            affinity_loss = (affinity_loss * masks).sum() / masks.sum()
+
+            loss += affinity_loss
+
         return CausalLMOutputWithPast(
-            loss=student_result.loss + distill_loss,
+            loss=loss,
             logits=student_result.logits,
             past_key_values=student_result.past_key_values,
             hidden_states=student_result.hidden_states,

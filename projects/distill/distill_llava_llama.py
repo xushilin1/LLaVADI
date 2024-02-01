@@ -205,13 +205,17 @@ class DistillModel(nn.Module):
         if self.args.align_logits:
             distill_loss = 0
             for i in range(labels.shape[0]):
-                stu_shift_logits = student_result.logits[i, :-1, :].contiguous()
-                stu_shift_labels = stu_labels[i, 1:].contiguous()
-                stu_logits = stu_shift_logits[stu_shift_labels != IGNORE_INDEX]
-                
-                teacher_shift_logits = teacher_result.logits[i, :-1, :].contiguous()
-                teacher_shift_labels = teacher_labels[i, 1:].contiguous()
-                teacher_logits = teacher_shift_logits[teacher_shift_labels != IGNORE_INDEX]
+                if self.args.align_logits_all:
+                    teacher_logits = teacher_result.logits[i][stu_attention_mask[i]]
+                    stu_logits = student_result.logits[i][stu_attention_mask[i]]
+                else:
+                    stu_shift_logits = student_result.logits[i, :-1, :].contiguous()
+                    stu_shift_labels = stu_labels[i, 1:].contiguous()
+                    stu_logits = stu_shift_logits[stu_shift_labels != IGNORE_INDEX]
+                    
+                    teacher_shift_logits = teacher_result.logits[i, :-1, :].contiguous()
+                    teacher_shift_labels = teacher_labels[i, 1:].contiguous()
+                    teacher_logits = teacher_shift_logits[teacher_shift_labels != IGNORE_INDEX]
                 
                 if self.args.mse_distill:
                     distill_loss += F.mse_loss(stu_logits, teacher_logits)

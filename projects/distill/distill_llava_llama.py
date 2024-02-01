@@ -229,12 +229,15 @@ class DistillModel(nn.Module):
             loss += distill_loss
         
         if self.args.align_affinity:
-            select_layer = [-1] # HACK here
             teacher_embeds = torch.stack(teacher_result.hidden_states, dim=1) #(bs, layers, N, 5120)
             student_embeds = torch.stack(student_result.hidden_states, dim=1) #(bs, layers, N, 2048)
-
-            teacher_embeds = teacher_embeds[:, select_layer, :, :]
-            student_embeds = student_embeds[:, select_layer, :, :]
+            
+            # HACK: sample middle layer embeddings uniformly
+            teacher_layer = torch.linspace(0, teacher_embeds.shape[1]-1, steps=10).long()
+            student_layer = torch.linspace(0, student_embeds.shape[1]-1, steps=10).long()
+            
+            teacher_embeds = teacher_embeds[:, teacher_layer, :, :]
+            student_embeds = student_embeds[:, student_layer, :, :]
             teacher_embeds = F.normalize(teacher_embeds, dim=-1)
             student_embeds = F.normalize(student_embeds, dim=-1)
             teacher_affinity = teacher_embeds @ teacher_embeds.transpose(-1, -2)
@@ -258,7 +261,7 @@ class DistillModel(nn.Module):
             affinity_loss = F.mse_loss(student_affinity, teacher_affinity, reduction='none')
             image_masks = torch.stack(image_masks, dim=0).unsqueeze(2)
             answer_masks = torch.stack(answer_masks, dim=0).unsqueeze(1)
-            masks = image_masks * answer_masks
+            masks = (image_masks * answer_masks).unsqueeze(1)
             affinity_loss = (affinity_loss * masks).sum() / (masks.sum() + 1e-6)
 
             loss += affinity_loss

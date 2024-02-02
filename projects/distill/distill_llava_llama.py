@@ -46,9 +46,9 @@ class DistillModel(nn.Module):
         self.teacher_tokenizer = teacher_tokenizer
         if self.args.align_hidden_embeds:
             self.embed_projector = nn.Sequential(
-                nn.Linear(5120, 2048),
+                nn.Linear(self.teacher_model.config.hidden_size, self.student_model.config.hidden_size),
                 nn.GELU(),
-                nn.Linear(2048, 2048),
+                nn.Linear(self.student_model.config.hidden_size, self.student_model.config.hidden_size),
             )
 
     @property

@@ -80,6 +80,7 @@ class TrainingArguments(transformers.TrainingArguments):
     align_affinity: bool = False
     mse_distill: bool = False
     align_hidden_embeds: bool = False
+    align_attn_map: bool = False
 
 def train():
     global local_rank

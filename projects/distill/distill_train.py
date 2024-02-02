@@ -79,6 +79,7 @@ class TrainingArguments(transformers.TrainingArguments):
     align_image_tokens: bool = False
     align_affinity: bool = False
     mse_distill: bool = False
+    align_hidden_embeds: bool = False
 
 def train():
     global local_rank
@@ -281,6 +282,8 @@ def train():
                 teacher_model=teacher_model,
                 teacher_tokenizer=teacher_tokenizer,
             )
+    if training_args.align_hidden_embeds:
+        model.embed_projector.requires_grad_(True)
     trainer = LLaVATrainer(model=model,
                     tokenizer=tokenizer,
                     args=training_args,

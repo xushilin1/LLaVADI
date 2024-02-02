@@ -44,6 +44,12 @@ class DistillModel(nn.Module):
         self.teacher_model = teacher_model
         self.student_tokenizer = student_tokenizer
         self.teacher_tokenizer = teacher_tokenizer
+        if self.args.align_hidden_embeds:
+            self.embed_projector = nn.Sequential(
+                nn.Linear(5120, 2048),
+                nn.GELU(),
+                nn.Linear(2048, 2048),
+            )
 
     @property
     def config(self):
@@ -266,6 +272,19 @@ class DistillModel(nn.Module):
 
             loss += affinity_loss
 
+        if self.args.align_hidden_embeds:
+            teacher_embeds = torch.stack(teacher_result.hidden_states, dim=1) #(bs, layers, N, 5120)
+            student_embeds = torch.stack(student_result.hidden_states, dim=1) #(bs, layers, N, 2048)
+            
+            teacher_layer = torch.linspace(0, teacher_embeds.shape[1]-1, steps=10).long()
+            student_layer = torch.linspace(0, student_embeds.shape[1]-1, steps=10).long()
+            
+            teacher_embeds = teacher_embeds[:, teacher_layer, :, :]
+            student_embeds = student_embeds[:, student_layer, :, :]
+
+            teacher_embeds = self.embed_projector(teacher_embeds)
+            loss += F.mse_loss(student_embeds, teacher_embeds)
+        
         return CausalLMOutputWithPast(
             loss=loss,
             logits=student_result.logits,

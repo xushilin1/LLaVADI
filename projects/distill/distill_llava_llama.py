@@ -46,9 +46,9 @@ class DistillModel(nn.Module):
         self.teacher_tokenizer = teacher_tokenizer
         if self.args.align_hidden_embeds:
             self.embed_projector = nn.Sequential(
-                nn.Linear(self.teacher_model.config.hidden_size, self.student_model.config.hidden_size),
+                nn.Linear(self.student_model.config.hidden_size, self.teacher_model.config.hidden_size),
                 nn.GELU(),
-                nn.Linear(self.student_model.config.hidden_size, self.student_model.config.hidden_size),
+                nn.Linear(self.teacher_model.config.hidden_size, self.teacher_model.config.hidden_size),
             )
 
     @property
@@ -105,7 +105,7 @@ class DistillModel(nn.Module):
             inputs_embeds=teacher_inputs_embeds,
             labels=teacher_labels,
             use_cache=use_cache,
-            output_attentions=True,
+            output_attentions=False,
             output_hidden_states=True,
             images=images,
             return_dict=return_dict
@@ -200,7 +200,7 @@ class DistillModel(nn.Module):
             inputs_embeds=stu_inputs_embeds,
             labels=stu_labels,
             use_cache=use_cache,
-            output_attentions=True,
+            output_attentions=False,
             output_hidden_states=True,
             images=images,
             return_dict=return_dict
@@ -232,6 +232,7 @@ class DistillModel(nn.Module):
                         reduction='batchmean',
                     ) * 0.7 * 0.7
             distill_loss /= labels.shape[0]
+            distill_loss *= 5.0
             loss += distill_loss
         
         if self.args.align_affinity:
@@ -276,15 +277,17 @@ class DistillModel(nn.Module):
             teacher_embeds = torch.stack(teacher_result.hidden_states, dim=1) #(bs, layers, N, 5120)
             student_embeds = torch.stack(student_result.hidden_states, dim=1) #(bs, layers, N, 2048)
             
-            teacher_layer = torch.linspace(0, teacher_embeds.shape[1]-1, steps=10).long()
-            student_layer = torch.linspace(0, student_embeds.shape[1]-1, steps=10).long()
-            
+            # teacher_layer = torch.linspace(0, teacher_embeds.shape[1]-1, steps=10).long()
+            # student_layer = torch.linspace(0, student_embeds.shape[1]-1, steps=10).long()
+            teacher_layer = [-1]
+            student_layer = [-1]
             teacher_embeds = teacher_embeds[:, teacher_layer, :, :]
             student_embeds = student_embeds[:, student_layer, :, :]
 
-            teacher_embeds = self.embed_projector(teacher_embeds)
-            loss += F.mse_loss(student_embeds, teacher_embeds)
-        
+            # teacher_embeds = self.embed_projector(teacher_embeds)
+            student_embeds = self.embed_projector(student_embeds)
+            mse_loss = F.mse_loss(student_embeds, teacher_embeds)
+            loss = loss + mse_loss * 5.0
         if self.args.align_attn_map:
             # NOTE: flash attention will not return attentions
             if student_result.attentions[0] is not None:

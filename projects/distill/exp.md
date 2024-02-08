@@ -64,6 +64,7 @@
 * ./output/distill/finetune/llava_MobileLLaMA-2.7B-Chat_exp18
     * align_logits；去掉student原本的loss；只保留蒸馏loss；蒸馏loss * 5,
     * 采用1.0的temperature
+    * textvqa: 49.9
 
 * ./output/distill/finetune/llava_MobileLLaMA-2.7B-Chat_exp14
     * align_logits；去掉student原本的loss；只保留蒸馏loss；蒸馏loss * 5,
@@ -91,7 +92,67 @@
     * llava 20层，使用隔层初始化
     * 蒸馏hidden state和attention map, attention map使用最后一层（OOM），由于维度一致，不使用Linear
     * 不使用Flash Attention
+    * textvqa: 46.3
 
 * ./output/distill/finetune/llava_MobileLLaMA-2.7B-Chat_exp19
     * 2 * 8 * 8；(align_logits,温度0.7 + align_hidden_embeds,均匀采10层，共享的两层Linear) * 5
     * align_logits的temperature设置成0.7
+    * textvqa: 46.6
+
+* ./output/distill/finetune/llava_MobileLLaMA-2.7B-Chat_exp21
+    * align_hidden_embeds；最后一层使用mse * 5
+    * student维度升到teacher维度
+    * textvqa: 48.7
+
+* ./output/distill/finetune/llava_MobileLLaMA-2.7B-Chat_exp22
+    * align_hidden_embeds；最后一层使用mse * 5；align_logits * 5
+    * student维度升到teacher维度
+    * textvqa: 50.7
+
+* ./output/distill/finetune/llava_MobileLLaMA-2.7B-Chat_exp23
+    * 使用20层的LLaVA，使用LLaVA-13b的最后20层初始化（貌似没有初始化成功）
+    * align_logits， loss*5
+
+* ./output/distill/finetune/llava_MobileLLaMA-2.7B-Chat_exp24
+    * 使用5层的LLaVA，使用LLaVA-13b的最后5层初始化
+    * align_logits， loss*5
+    * textvqa: 11.2
+
+* ./output/distill/finetune/llava_MobileLLaMA-2.7B-Chat_exp25
+    * 使用10层的LLaVA，使用LLaVA-13b的最后10层初始化
+    * align_logits， loss*5
+    * textvqa: 12.95
+
+* ./output/distill/finetune/llava_MobileLLaMA-2.7B-Chat_exp26
+    * 使用20层的LLaVA，使用LLaVA-13b的最后20层初始化
+    * align_logits， loss*5
+    * textvqa: 19.1
+
+* ./output/distill/finetune/llava_MobileLLaMA-2.7B-Chat_exp27
+    * 使用5层的LLaVA，使用LLaVA-13b的最后5层初始化
+    * align_logits， loss*5
+    * epoch=3
+
+* ./output/distill/finetune/llava_MobileLLaMA-2.7B-Chat_exp28
+    * 使用5层的LLaVA，使用LLaVA-13b的最后5层初始化； 使用pretrain的projector
+    * align_logits， loss*5
+
+* ./output/distill/finetune/llava_MobileLLaMA-2.7B-Chat_exp29
+    * 使用5层的LLaVA，使用LLaVA-13b的最后5层初始化； 使用pretrain的projector
+    * align_logits
+
+* ./output/distill/finetune/llava_MobileLLaMA-2.7B-Chat_exp30
+    * 使用5层的LLaVA，使用LLaVA-13b的最后5层初始化； 使用pretrain的projector
+    * align_logits * 5, 不使用原本自回归loss
+
+* ./output/distill/finetune/llava_MobileLLaMA-2.7B-Chat_exp31
+    * 使用20层的LLaVA，使用LLaVA-13b的前面20层初始化； 使用LLaVA-13B的projector
+    * align_logits * 5
+
+* ./output/distill/finetune/llava_MobileLLaMA-2.7B-Chat_exp32
+    * 使用10层的LLaVA，使用LLaVA-13b的前面20层初始化； 使用LLaVA-13B的projector
+    * align_logits * 5
+
+* ./output/distill/finetune/llava_MobileLLaMA-2.7B-Chat_exp33
+    * 使用10层的LLaVA，使用LLaVA-13b的前面20层初始化； 使用LLaVA-13B的projector
+    * align_logits * 5, 不使用原本loss

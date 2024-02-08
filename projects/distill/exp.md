@@ -132,27 +132,44 @@
     * 使用5层的LLaVA，使用LLaVA-13b的最后5层初始化
     * align_logits， loss*5
     * epoch=3
+    * textvqa: 13.6
 
 * ./output/distill/finetune/llava_MobileLLaMA-2.7B-Chat_exp28
     * 使用5层的LLaVA，使用LLaVA-13b的最后5层初始化； 使用pretrain的projector
     * align_logits， loss*5
+    * textvqa: 8.31
 
 * ./output/distill/finetune/llava_MobileLLaMA-2.7B-Chat_exp29
     * 使用5层的LLaVA，使用LLaVA-13b的最后5层初始化； 使用pretrain的projector
     * align_logits
+    * textvqa: 7.7
 
 * ./output/distill/finetune/llava_MobileLLaMA-2.7B-Chat_exp30
     * 使用5层的LLaVA，使用LLaVA-13b的最后5层初始化； 使用pretrain的projector
     * align_logits * 5, 不使用原本自回归loss
+    * textvqa: 5.6
 
 * ./output/distill/finetune/llava_MobileLLaMA-2.7B-Chat_exp31
     * 使用20层的LLaVA，使用LLaVA-13b的前面20层初始化； 使用LLaVA-13B的projector
     * align_logits * 5
+    * textvqa: 54.3
 
 * ./output/distill/finetune/llava_MobileLLaMA-2.7B-Chat_exp32
-    * 使用10层的LLaVA，使用LLaVA-13b的前面20层初始化； 使用LLaVA-13B的projector
+    * 使用10层的LLaVA，使用LLaVA-13b的前面10层初始化； 使用LLaVA-13B的projector
     * align_logits * 5
+    * textvqa: 30.5
+
+* ./output/distill/finetune/llava_MobileLLaMA-2.7B-Chat_exp34
+    * 使用10层的LLaVA，使用LLaVA-13b的前面10层初始化； 使用LLaVA-13B的projector
+    * align_logits * 5, align_hidden_states * 5 （最后一层）
+
+* ./output/distill/finetune/llava_MobileLLaMA-2.7B-Chat_exp35
+    * 使用10层的LLaVA，使用LLaVA-13b的前面10层初始化； 使用LLaVA-13B的projector
+    * align_logits * 5, align_hidden_states * 5 （最后一层）
+    * epoch=3
+
 
 * ./output/distill/finetune/llava_MobileLLaMA-2.7B-Chat_exp33
-    * 使用10层的LLaVA，使用LLaVA-13b的前面20层初始化； 使用LLaVA-13B的projector
+    * 使用5层的LLaVA，使用LLaVA-13b的前面5层初始化； 使用LLaVA-13B的projector
     * align_logits * 5, 不使用原本loss
+    * textvqa: 6.6

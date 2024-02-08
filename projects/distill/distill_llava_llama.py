@@ -288,18 +288,21 @@ class DistillModel(nn.Module):
             student_embeds = self.embed_projector(student_embeds)
             mse_loss = F.mse_loss(student_embeds, teacher_embeds)
             loss = loss + mse_loss * 5.0
+
         if self.args.align_attn_map:
             # NOTE: flash attention will not return attentions
             if student_result.attentions[0] is not None:
-                teacher_embeds = torch.stack(teacher_result.attentions, dim=1) # (bs, num_layer, num_heads, L, L)
-                student_embeds = torch.stack(student_result.attentions, dim=1)
-                teacher_layer = torch.linspace(0, teacher_embeds.shape[1]-1, steps=10).long()
-                student_layer = torch.linspace(0, student_embeds.shape[1]-1, steps=10).long()
+                # teacher_embeds = torch.stack(teacher_result.attentions, dim=1) # (bs, num_layer, num_heads, L, L)
+                # student_embeds = torch.stack(student_result.attentions, dim=1)
+                # teacher_layer = torch.linspace(0, teacher_embeds.shape[1]-1, steps=10).long()
+                # student_layer = torch.linspace(0, student_embeds.shape[1]-1, steps=10).long()
             
-                teacher_embeds = teacher_embeds[:, teacher_layer]
-                student_embeds = student_embeds[:, student_layer]
+                # teacher_embeds = teacher_embeds[:, teacher_layer]
+                # student_embeds = student_embeds[:, student_layer]
+                teacher_embeds = teacher_result.attentions[-1]
+                student_embeds = student_result.attentions[-1]
                 attn_loss = F.mse_loss(student_embeds, teacher_embeds)
-                loss += attn_loss
+                loss = loss + attn_loss * 5.0
 
         return CausalLMOutputWithPast(
             loss=loss,

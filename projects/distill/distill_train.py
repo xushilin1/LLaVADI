@@ -32,6 +32,7 @@ local_rank = None
 
 
 replace_llama_attn_with_flash_attn()
+from transformers.models.llama.modeling_llama import LlamaModel # L708
 
 from llava.train.train import rank0_print, ModelArguments, DataArguments
 from llava.train.train import find_all_linear_names, smart_tokenizer_and_embedding_resize, make_supervised_data_module

@@ -82,6 +82,7 @@ class TrainingArguments(transformers.TrainingArguments):
     mse_distill: bool = False
     align_hidden_embeds: bool = False
     align_attn_map: bool = False
+    align_vision_tower: bool = False
 
 def train():
     global local_rank
@@ -210,6 +211,13 @@ def train():
         vision_tower = model.get_vision_tower()
         vision_tower.to(dtype=compute_dtype, device=training_args.device)
 
+        if training_args.align_vision_tower:
+            vision_tower.vision_tower.vision_model.embeddings.patch_embedding = torch.nn.Conv2d(3,768,14,14,bias=False)
+            vision_tower.vision_tower.vision_model.embeddings.position_embedding = torch.nn.Embedding(577, 768)
+            vision_tower.vision_tower.vision_model.embeddings.position_ids = torch.arange(577).expand((1, -1))
+            vision_tower.to(dtype=compute_dtype, device=training_args.device)
+            vision_tower.requires_grad_(True)
+
         data_args.image_processor = vision_tower.image_processor
         data_args.is_multimodal = True
 
@@ -250,8 +258,6 @@ def train():
                     if training_args.bf16 and module.weight.dtype == torch.float32:
                         module = module.to(torch.bfloat16)
 
-    data_module = make_supervised_data_module(tokenizer=tokenizer,
-                                              data_args=data_args)
     teacher_model = LlavaLlamaForCausalLM.from_pretrained(
         "checkpoints/llava-v1.5-13b",
     )
@@ -274,8 +280,12 @@ def train():
     teacher_vision_tower = teacher_model.get_vision_tower()
     if not teacher_vision_tower.is_loaded:
         teacher_vision_tower.load_model()
+    data_args.image_processor = teacher_vision_tower.image_processor
     teacher_model.to(device=training_args.device, dtype=compute_dtype)
     teacher_model.requires_grad_(False)
+
+    data_module = make_supervised_data_module(tokenizer=tokenizer,
+                                              data_args=data_args)
 
     model = DistillModel(
                 training_args,

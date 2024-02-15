@@ -240,8 +240,9 @@ class DistillModel(nn.Module):
             student_embeds = torch.stack(student_result.hidden_states, dim=1) #(bs, layers, N, 2048)
             
             # HACK: sample middle layer embeddings uniformly
-            teacher_layer = torch.linspace(0, teacher_embeds.shape[1]-1, steps=10).long()
-            student_layer = torch.linspace(0, student_embeds.shape[1]-1, steps=10).long()
+            # teacher_layer = torch.linspace(0, teacher_embeds.shape[1]-1, steps=10).long()
+            # student_layer = torch.linspace(0, student_embeds.shape[1]-1, steps=10).long()
+            teacher_layer, student_layer = [-1], [-1]
             
             teacher_embeds = teacher_embeds[:, teacher_layer, :, :]
             student_embeds = student_embeds[:, student_layer, :, :]
@@ -250,24 +251,11 @@ class DistillModel(nn.Module):
             teacher_affinity = teacher_embeds @ teacher_embeds.transpose(-1, -2)
             student_affinity = student_embeds @ student_embeds.transpose(-1, -2)
 
-            image_masks, answer_masks = [], []
-            for batch_idx, cur_input_ids in enumerate(input_ids):
-                img_mask = teacher_embeds.new_zeros(teacher_embeds.shape[2], dtype=torch.bool)
-                ans_mask = teacher_embeds.new_zeros(teacher_embeds.shape[2], dtype=torch.bool)
-                if (cur_input_ids == IMAGE_TOKEN_INDEX).sum() == 0: # no image in conversation
-                    pass
-                else:
-                    num_img_token = 576
-                    image_token_indices = torch.where(cur_input_ids == IMAGE_TOKEN_INDEX)[0].item()
-                    img_mask[image_token_indices:image_token_indices+num_img_token] = True
-                    ans_mask = stu_labels[batch_idx] != IGNORE_INDEX
-                    ans_mask = ans_mask & stu_attention_mask[batch_idx] # remove padding
-                image_masks.append(img_mask)
-                answer_masks.append(ans_mask)
+            image_masks, answer_masks = self.get_image_masks(input_ids, stu_labels, stu_attention_mask)
+            image_masks = image_masks.unsqueeze(2)
+            answer_masks = answer_masks.unsqueeze(1)
 
             affinity_loss = F.mse_loss(student_affinity, teacher_affinity, reduction='none')
-            image_masks = torch.stack(image_masks, dim=0).unsqueeze(2)
-            answer_masks = torch.stack(answer_masks, dim=0).unsqueeze(1)
             masks = (image_masks * answer_masks).unsqueeze(1)
             affinity_loss = (affinity_loss * masks).sum() / (masks.sum() + 1e-6)
 
@@ -338,6 +326,17 @@ class DistillModel(nn.Module):
 
                 loss = loss + attn_loss * 5.0
 
+        if self.args.align_vision_tower:
+            image_masks, answer_masks = self.get_image_masks(input_ids, stu_labels, stu_attention_mask)
+            
+            masks = torch.logical_or(image_masks, answer_masks)
+
+            mse_loss = F.mse_loss(stu_inputs_embeds, teacher_inputs_embeds, reduction='none')
+
+            # TODO: check mse_loss[image_masks].sum() >> mse_loss[~image_masks].sum()
+            mse_loss = (mse_loss * masks.unsqueeze(-1)).sum() / (masks.sum() + 1e-6)
+            loss = loss + mse_loss
+
         return CausalLMOutputWithPast(
             loss=loss,
             logits=student_result.logits,
@@ -345,3 +344,22 @@ class DistillModel(nn.Module):
             hidden_states=student_result.hidden_states,
             attentions=student_result.attentions,
         )
+
+    def get_image_masks(self, input_ids, labels, attention_mask):
+        image_masks, answer_masks = [], []
+        for batch_idx, cur_input_ids in enumerate(input_ids):
+            img_mask = labels.new_zeros(labels.shape[1], dtype=torch.bool)
+            ans_mask = labels.new_zeros(labels.shape[1], dtype=torch.bool)
+            if (cur_input_ids == IMAGE_TOKEN_INDEX).sum() == 0: # no image in conversation
+                pass
+            else:
+                num_img_token = 576
+                image_token_indices = torch.where(cur_input_ids == IMAGE_TOKEN_INDEX)[0].item()
+                img_mask[image_token_indices:image_token_indices+num_img_token] = True
+                ans_mask = labels[batch_idx] != IGNORE_INDEX
+                ans_mask = ans_mask & attention_mask[batch_idx] # remove padding
+            image_masks.append(img_mask)
+            answer_masks.append(ans_mask)
+        image_masks = torch.stack(image_masks, dim=0)
+        answer_masks = torch.stack(answer_masks, dim=0)
+        return image_masks, answer_masks

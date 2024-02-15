@@ -109,50 +109,53 @@
     * student维度升到teacher维度
     * textvqa: 50.7
 
+* ./output/distill/finetune/llava_MobileLLaMA-2.7B-Chat_exp36
+    * hidden_embeds（仅使用answer token）；最后一层使用mse * 5；align_logits * 5
+    * student维度升到teacher维度
+    * textvqa: 49.4
+
+* ./output/distill/finetune/llava_MobileLLaMA-2.7B-Chat_exp37
+    * aligh_affinity; hidden_embeds（仅使用answer token）；align_logits * 5
+    * student维度升到teacher维度
+    * textvqa: 49.6
+
+* ./output/distill/finetune/llava_MobileLLaMA-2.7B-Chat_exp42
+    * aligh_affinity; hidden_embeds（使用所有token）align_logits * 5
+    * student维度升到teacher维度
+    * textvqa: 
+
 * ./output/distill/finetune/llava_MobileLLaMA-2.7B-Chat_exp23
     * 使用20层的LLaVA，使用LLaVA-13b的最后20层初始化（貌似没有初始化成功）
     * align_logits， loss*5
-
-* ./output/distill/finetune/llava_MobileLLaMA-2.7B-Chat_exp24
-    * 使用5层的LLaVA，使用LLaVA-13b的最后5层初始化
-    * align_logits， loss*5
-    * textvqa: 11.2
-
-* ./output/distill/finetune/llava_MobileLLaMA-2.7B-Chat_exp25
-    * 使用10层的LLaVA，使用LLaVA-13b的最后10层初始化
-    * align_logits， loss*5
-    * textvqa: 12.95
-
-* ./output/distill/finetune/llava_MobileLLaMA-2.7B-Chat_exp26
-    * 使用20层的LLaVA，使用LLaVA-13b的最后20层初始化
-    * align_logits， loss*5
-    * textvqa: 19.1
-
-* ./output/distill/finetune/llava_MobileLLaMA-2.7B-Chat_exp27
-    * 使用5层的LLaVA，使用LLaVA-13b的最后5层初始化
-    * align_logits， loss*5
-    * epoch=3
-    * textvqa: 13.6
-
-* ./output/distill/finetune/llava_MobileLLaMA-2.7B-Chat_exp28
-    * 使用5层的LLaVA，使用LLaVA-13b的最后5层初始化； 使用pretrain的projector
-    * align_logits， loss*5
-    * textvqa: 8.31
-
-* ./output/distill/finetune/llava_MobileLLaMA-2.7B-Chat_exp29
-    * 使用5层的LLaVA，使用LLaVA-13b的最后5层初始化； 使用pretrain的projector
-    * align_logits
-    * textvqa: 7.7
-
-* ./output/distill/finetune/llava_MobileLLaMA-2.7B-Chat_exp30
-    * 使用5层的LLaVA，使用LLaVA-13b的最后5层初始化； 使用pretrain的projector
-    * align_logits * 5, 不使用原本自回归loss
-    * textvqa: 5.6
 
 * ./output/distill/finetune/llava_MobileLLaMA-2.7B-Chat_exp31
     * 使用20层的LLaVA，使用LLaVA-13b的前面20层初始化； 使用LLaVA-13B的projector
     * align_logits * 5
     * textvqa: 54.3
+
+* ./output/distill/finetune/llava_MobileLLaMA-2.7B-Chat_exp38
+    * 使用20层的LLaVA，使用LLaVA-13b的前面20层初始化； 使用LLaVA-13B的projector
+    * align_logits * 5, hidden_embeds（仅使用answer token）； 
+    * textvqa: 54.1
+
+* ./output/distill/finetune/llava_MobileLLaMA-2.7B-Chat_exp39
+    * 使用20层的LLaVA，使用LLaVA-13b的前面20层初始化； 使用LLaVA-13B的projector
+    * align_logits * 5, hidden_embeds（仅使用answer token）；attention_map 
+    * align_attn_map(image token to answer token)
+    * textvqa: 54.0
+
+* ./output/distill/finetune/llava_MobileLLaMA-2.7B-Chat_exp40
+    * 使用20层的LLaVA，使用LLaVA-13b的前面20层初始化； 使用LLaVA-13B的projector
+    * align_logits * 5, hidden_embeds（仅使用answer token）；attention_map 
+    * align_attn_map(answer token to answer token)
+    * textvqa: 54.0
+
+* ./output/distill/finetune/llava_MobileLLaMA-2.7B-Chat_exp41
+    * 使用20层的LLaVA，使用LLaVA-13b的前面20层初始化； 使用LLaVA-13B的projector
+    * align_logits * 5, hidden_embeds（仅使用answer token）；attention_map 
+    * align_attn_map(answer token to image token)
+    * textvqa: 54.4
+
 
 * ./output/distill/finetune/llava_MobileLLaMA-2.7B-Chat_exp32
     * 使用10层的LLaVA，使用LLaVA-13b的前面10层初始化； 使用LLaVA-13B的projector
@@ -162,14 +165,23 @@
 * ./output/distill/finetune/llava_MobileLLaMA-2.7B-Chat_exp34
     * 使用10层的LLaVA，使用LLaVA-13b的前面10层初始化； 使用LLaVA-13B的projector
     * align_logits * 5, align_hidden_states * 5 （最后一层）
+    * textvqa: 30.2
 
 * ./output/distill/finetune/llava_MobileLLaMA-2.7B-Chat_exp35
     * 使用10层的LLaVA，使用LLaVA-13b的前面10层初始化； 使用LLaVA-13B的projector
     * align_logits * 5, align_hidden_states * 5 （最后一层）
     * epoch=3
 
+* ./output/distill/finetune/llava_MobileLLaMA-2.7B-Chat_exp43
+    * 使用20层的LLaVA，使用LLaVA-13b的前面20层初始化；
+    * openai/clip-vit-base；位置编码随机初始化；维度768和teacher的维度不一致；随机初始化映射层
+    * aligh_affinity; hidden_embeds（使用所有token）align_logits * 5
+    * align_vision_tower（teacher使用LLaVA，经过映射层后的特征维度可以保持一致）
+    * epoch=6
 
-* ./output/distill/finetune/llava_MobileLLaMA-2.7B-Chat_exp33
-    * 使用5层的LLaVA，使用LLaVA-13b的前面5层初始化； 使用LLaVA-13B的projector
-    * align_logits * 5, 不使用原本loss
-    * textvqa: 6.6
+* ./output/distill/finetune/llava_MobileLLaMA-2.7B-Chat_exp44
+    * 使用20层的LLaVA，使用LLaVA-13b的前面20层初始化；
+    * openai/clip-vit-base；位置编码随机初始化；维度768和teacher的维度不一致；随机初始化映射层
+    * aligh_affinity; hidden_embeds（使用所有token）align_logits * 5
+    * align_vision_tower（teacher使用LLaVA，经过映射层后的特征维度可以保持一致）
+    * epoch=1

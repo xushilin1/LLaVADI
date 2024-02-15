@@ -282,6 +282,8 @@ class DistillModel(nn.Module):
             mse_loss = F.mse_loss(student_embeds, teacher_embeds, reduction='none')
             answer_masks = torch.stack(answer_masks, dim=0).unsqueeze(1).unsqueeze(-1)
             answer_masks = answer_masks.expand_as(mse_loss)
+            answer_masks = torch.ones_like(answer_masks)
+            answer_masks = answer_masks * stu_attention_mask.unsqueeze(1).unsqueeze(-1)
             mse_loss = (mse_loss * answer_masks).sum() / (answer_masks.sum() + 1e-6)
 
             loss = loss + mse_loss * 5.0

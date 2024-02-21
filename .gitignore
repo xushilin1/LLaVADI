@@ -2,8 +2,11 @@ checkpoints
 datasets
 output
 playground/data/eval/MME/MME_Benchmark_release_version
+playground/data/eval/seed_bench
+playground/data/eval/MME
+playground/data/eval/mmbench
 answers
-eval/
+# eval/
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]

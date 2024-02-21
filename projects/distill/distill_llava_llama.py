@@ -77,7 +77,8 @@ class DistillModel(nn.Module):
         use_cache: Optional[bool] = None,
         output_attentions: Optional[bool] = None,
         output_hidden_states: Optional[bool] = None,
-        images: Optional[torch.FloatTensor] = None,
+        stu_images: Optional[torch.FloatTensor] = None,
+        tea_images: Optional[torch.FloatTensor] = None,
         return_dict: Optional[bool] = None,
     ) -> Union[Tuple, CausalLMOutputWithPast]:
 
@@ -94,7 +95,7 @@ class DistillModel(nn.Module):
             attention_mask,
             past_key_values,
             labels,
-            images
+            tea_images
         )
 
         teacher_result = self.teacher_model.forward(
@@ -107,7 +108,7 @@ class DistillModel(nn.Module):
             use_cache=use_cache,
             output_attentions=False,
             output_hidden_states=True,
-            images=images,
+            images=tea_images,
             return_dict=return_dict
         )
 
@@ -124,7 +125,7 @@ class DistillModel(nn.Module):
             attention_mask,
             past_key_values,
             labels,
-            images
+            stu_images
         )
 
         if self.args.align_image_tokens:
@@ -202,7 +203,7 @@ class DistillModel(nn.Module):
             use_cache=use_cache,
             output_attentions=False,
             output_hidden_states=True,
-            images=images,
+            images=stu_images,
             return_dict=return_dict
         )
         
@@ -355,7 +356,7 @@ class DistillModel(nn.Module):
             if (cur_input_ids == IMAGE_TOKEN_INDEX).sum() == 0: # no image in conversation
                 pass
             else:
-                num_img_token = 576
+                num_img_token = labels.shape[1] - input_ids.shape[1] + 1 # 196 or 576
                 image_token_indices = torch.where(cur_input_ids == IMAGE_TOKEN_INDEX)[0].item()
                 img_mask[image_token_indices:image_token_indices+num_img_token] = True
                 ans_mask = labels[batch_idx] != IGNORE_INDEX

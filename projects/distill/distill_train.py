@@ -35,10 +35,29 @@ local_rank = None
 replace_llama_attn_with_flash_attn()
 from transformers.models.llama.modeling_llama import LlamaModel # L708
 
-from llava.train.train import rank0_print, ModelArguments, DataArguments
+from llava.train.train import rank0_print, DataArguments
 from llava.train.train import find_all_linear_names, smart_tokenizer_and_embedding_resize
 from llava.train.train import get_peft_state_maybe_zero_3, get_peft_state_non_lora_maybe_zero_3
 from llava.train.train import get_mm_adapter_state_maybe_zero_3
+
+
+
+@dataclass
+class ModelArguments:
+    model_name_or_path: Optional[str] = field(default="facebook/opt-125m")
+    version: Optional[str] = field(default="v0")
+    freeze_backbone: bool = field(default=False)
+    tune_mm_mlp_adapter: bool = field(default=False)
+    vision_tower: Optional[str] = field(default=None)
+    tune_vision_tower: bool = field(default=False)
+    tune_vit_from_layer: Optional[int] = field(default=-1)
+    tune_entire_model: bool = field(default=False)
+    mm_vision_select_layer: Optional[int] = field(default=-1)   # default to the last layer
+    pretrain_mm_mlp_adapter: Optional[str] = field(default=None)
+    mm_projector_type: Optional[str] = field(default='linear')
+    mm_use_im_start_end: bool = field(default=False)
+    mm_use_im_patch_token: bool = field(default=True)
+    mm_vision_select_feature: Optional[str] = field(default="patch")
 
 
 @dataclass
@@ -226,6 +245,26 @@ def make_supervised_data_module(tokenizer: transformers.PreTrainedTokenizer,
     return dict(train_dataset=train_dataset,
                 eval_dataset=None,
                 data_collator=data_collator)
+
+def unlock_vit(training_args, model_args, vision_tower):
+    # lr_of_vit = training_args.vision_tower_lr if training_args.vision_tower_lr is not None and training_args.vision_tower_lr != 0 else training_args.learning_rate
+    
+    # rank0_print(f'Tune the vision tower! LR for ViT is {lr_of_vit}.')
+    if model_args.tune_vit_from_layer != -1:
+        rank0_print(f'Tune the vision tower from layer {model_args.tune_vit_from_layer}!')
+    for n, p in vision_tower.named_parameters():
+        if model_args.tune_vit_from_layer != -1:
+            if 'vision_tower.vision_model.encoder.layers.' in n:
+                layer_id = int(
+                    n.split('vision_tower.vision_model.encoder.layers.')[-1].split('.')[0])
+                if layer_id >= model_args.tune_vit_from_layer:
+                    p.requires_grad = True
+                else:
+                    p.requires_grad = False
+            else:
+                p.requires_grad = False
+        else:
+            p.requires_grad = True
 
 def train():
     global local_rank

@@ -216,14 +216,15 @@ class DistillModel(nn.Module):
                     teacher_logits = teacher_result.logits[i][stu_attention_mask[i]]
                     stu_logits = student_result.logits[i][stu_attention_mask[i]]
                 else:
-                    stu_shift_logits = student_result.logits[i, :-1, :].contiguous()
-                    stu_shift_labels = stu_labels[i, 1:].contiguous()
-                    stu_logits = stu_shift_logits[stu_shift_labels != IGNORE_INDEX]
+                    stu_shift_logits = student_result.logits[i]
+                    stu_logits = stu_shift_logits[stu_labels[i] != IGNORE_INDEX]
                     
-                    teacher_shift_logits = teacher_result.logits[i, :-1, :].contiguous()
-                    teacher_shift_labels = teacher_labels[i, 1:].contiguous()
-                    teacher_logits = teacher_shift_logits[teacher_shift_labels != IGNORE_INDEX]
-                
+                    teacher_shift_logits = teacher_result.logits[i]
+                    teacher_logits = teacher_shift_logits[teacher_labels[i] != IGNORE_INDEX]
+                    
+                    # FIXME: maybe truncate by model_max_length
+                    stu_logits = stu_logits[:teacher_logits.shape[0]]
+
                 if self.args.mse_distill:
                     distill_loss += F.mse_loss(stu_logits, teacher_logits)
                 else:

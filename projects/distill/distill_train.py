@@ -468,6 +468,23 @@ def train():
 
     data_module = make_supervised_data_module(tokenizer=tokenizer,
                                               data_args=data_args)
+    
+
+    # from llava.train.llava_trainer import LengthGroupedSampler
+    # from torch.utils.data import DataLoader
+    # train_dataset = data_module['train_dataset']
+    # dataloader_params = dict(
+    #     sampler = LengthGroupedSampler(batch_size=8,world_size=1,
+    #             lengths = train_dataset.modality_lengths,
+    #             group_by_modality=True),
+    #     batch_size=training_args.per_device_train_batch_size,
+    #     collate_fn=data_module['data_collator'],
+    #     num_workers=training_args.num_workers,
+    #     pin_memory=True,
+    #     drop_last=True,
+    #     worker_init_fn = transformers.trainer_utils.seed_worker
+    # )
+    # data_loader = DataLoader(train_dataset, **dataloader_params)
 
     model = DistillModel(
                 training_args,

@@ -276,16 +276,14 @@ class DistillModel(nn.Module):
 
             # teacher_embeds = self.embed_projector(teacher_embeds)
             student_embeds = self.embed_projector(student_embeds)
-            mse_loss = F.mse_loss(student_embeds, teacher_embeds, reduction='none')
+            
+            mse_loss = 1 - F.cosine_similarity(student_embeds, teacher_embeds, dim=-1)
+            # mse_loss = F.mse_loss(student_embeds, teacher_embeds, reduction='none').mean(-1)
 
             image_masks, answer_masks = self.get_image_masks(input_ids, stu_labels, stu_attention_mask)
-            
             # answer_masks = torch.logical_or(answer_masks, image_masks)
-            
-            answer_masks = answer_masks.unsqueeze(1).unsqueeze(-1)
-            answer_masks = answer_masks.expand_as(mse_loss)
-            # answer_masks = torch.ones_like(answer_masks)
-            # answer_masks = answer_masks * stu_attention_mask.unsqueeze(1).unsqueeze(-1)
+            # answer_masks = stu_attention_mask.unsqueeze(1)
+            answer_masks = answer_masks.unsqueeze(1)
             mse_loss = (mse_loss * answer_masks).sum() / (answer_masks.sum() + 1e-6)
 
             loss = loss + mse_loss * 5.0

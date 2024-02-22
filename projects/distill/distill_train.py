@@ -38,8 +38,6 @@ from transformers.models.llama.modeling_llama import LlamaModel # L708
 from llava.train.train import rank0_print, DataArguments
 from llava.train.train import find_all_linear_names, smart_tokenizer_and_embedding_resize
 from llava.train.train import get_peft_state_maybe_zero_3, get_peft_state_non_lora_maybe_zero_3
-from llava.train.train import get_mm_adapter_state_maybe_zero_3
-
 
 
 @dataclass

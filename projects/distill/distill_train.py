@@ -93,6 +93,7 @@ class TrainingArguments(transformers.TrainingArguments):
     lora_weight_path: str = ""
     lora_bias: str = "none"
     mm_projector_lr: Optional[float] = None
+    vision_tower_lr: Optional[float] = None
     group_by_modality_length: bool = field(default=False)
     select_k: int = 16
     align_logits: bool = False
@@ -103,6 +104,36 @@ class TrainingArguments(transformers.TrainingArguments):
     align_hidden_embeds: bool = False
     align_attn_map: bool = False
     align_vision_tower: bool = False
+
+def maybe_zero_3(param, ignore_status=False, name=None):
+    from deepspeed import zero
+    from deepspeed.runtime.zero.partition_parameters import ZeroParamStatus
+    if hasattr(param, "ds_id"):
+        if param.ds_status == ZeroParamStatus.NOT_AVAILABLE:
+            if not ignore_status:
+                logging.warning(
+                    f"{name}: param.ds_status != ZeroParamStatus.NOT_AVAILABLE: {param.ds_status}")
+        with zero.GatheredParameters([param]):
+            param = param.data.detach().cpu().clone()
+    else:
+        param = param.detach().cpu().clone()
+    return param
+
+def get_mm_adapter_state_maybe_zero_3(named_params, keys_to_match):
+    to_return = {k: t for k, t in named_params if any(
+        key_match in k for key_match in keys_to_match)}
+    to_return = {k: maybe_zero_3(v, ignore_status=True).cpu()
+                 for k, v in to_return.items()}
+    return to_return
+
+
+def get_vision_tower_state_maybe_zero_3(named_params, keys_to_match=['']):
+    to_return = {k: t for k, t in named_params if any(
+        key_match in k for key_match in keys_to_match)}
+    to_return = {k: maybe_zero_3(v, ignore_status=True).cpu()
+                 for k, v in to_return.items()}
+    return to_return
+
 
 
 class LazySupervisedDataset(Dataset):
@@ -418,11 +449,24 @@ def train():
             for p in model.get_model().mm_projector.parameters():
                 p.requires_grad = False
 
+        model.config.tune_vision_tower = training_args.tune_vision_tower = model_args.tune_vision_tower
+        model.config.tune_entire_model = training_args.tune_entire_model = model_args.tune_entire_model
+        if model_args.tune_entire_model:
+            if training_args.lora_enable:
+                unlock_vit(training_args, model_args, vision_tower)
+            else:
+                model.requires_grad_(True)
+                unlock_vit(training_args, model_args, vision_tower)
+        else:
+            if model_args.tune_vision_tower:
+                unlock_vit(training_args, model_args, vision_tower)
+
         if training_args.bits in [4, 8]:
             model.get_model().mm_projector.to(dtype=compute_dtype, device=training_args.device)
 
         model.config.mm_use_im_start_end = data_args.mm_use_im_start_end = model_args.mm_use_im_start_end
         model.config.mm_projector_lr = training_args.mm_projector_lr
+        model.config.vision_tower_lr = training_args.vision_tower_lr
         training_args.use_im_start_end = model_args.mm_use_im_start_end
         model.config.mm_use_im_patch_token = model_args.mm_use_im_patch_token
         model.initialize_vision_tokenizer(model_args, tokenizer=tokenizer)
@@ -519,6 +563,17 @@ def train():
             model.config.save_pretrained(training_args.output_dir)
             model.save_pretrained(training_args.output_dir, state_dict=state_dict)
             torch.save(non_lora_state_dict, os.path.join(training_args.output_dir, 'non_lora_trainables.bin'))
+            if model_args.tune_entire_model:
+                if trainer.deepspeed:
+                    torch.cuda.synchronize()
+                trainer.model.get_vision_tower().image_processor.save_pretrained(
+                    os.path.join(training_args.output_dir, 'vision_tower'))
+                trainer.model.get_vision_tower().vision_tower.vision_model.config.save_pretrained(
+                    os.path.join(training_args.output_dir, 'vision_tower'))
+                weight_to_save = get_vision_tower_state_maybe_zero_3(
+                    trainer.model.get_vision_tower().vision_tower.named_parameters())
+                torch.save(weight_to_save, os.path.join(
+                    training_args.output_dir, 'vision_tower/pytorch_model.bin'))
     else:
         safe_save_model_for_hf_trainer(trainer=trainer,
                                        output_dir=training_args.output_dir)
@@ -546,10 +601,38 @@ def safe_save_model_for_hf_trainer(trainer: transformers.Trainer,
                 torch.save(weight_to_save, os.path.join(mm_projector_folder, f'{current_folder}.bin'))
             else:
                 torch.save(weight_to_save, os.path.join(output_dir, f'mm_projector.bin'))
+
+        if getattr(trainer.args, "tune_vision_tower", False):
+            if trainer.deepspeed:
+                torch.cuda.synchronize()
+            trainer.model.get_vision_tower().image_processor.save_pretrained(
+                os.path.join(output_dir, 'vision_tower'))
+            trainer.model.get_vision_tower().vision_tower.vision_model.config.save_pretrained(
+                os.path.join(output_dir, 'vision_tower'))
+            weight_to_save = get_vision_tower_state_maybe_zero_3(
+                trainer.model.get_vision_tower().vision_tower.named_parameters())
+            if trainer.args.local_rank == 0 or trainer.args.local_rank == -1:
+                torch.save(weight_to_save, os.path.join(
+                    output_dir, 'vision_tower/pytorch_model.bin'))
         return
+
+    if getattr(trainer.args, "tune_vision_tower", False) or getattr(trainer.args, "tune_entire_model", False):
+        if trainer.deepspeed:
+            torch.cuda.synchronize()
+        trainer.model.get_vision_tower().image_processor.save_pretrained(
+            os.path.join(output_dir, 'vision_tower'))
+        trainer.model.get_vision_tower().vision_tower.vision_model.config.save_pretrained(
+            os.path.join(output_dir, 'vision_tower'))
+        weight_to_save = get_vision_tower_state_maybe_zero_3(
+            trainer.model.get_vision_tower().vision_tower.named_parameters())
+        if trainer.args.local_rank == 0 or trainer.args.local_rank == -1:
+            torch.save(weight_to_save, os.path.join(
+                output_dir, 'vision_tower/pytorch_model.bin'))
 
     if trainer.deepspeed:
         torch.cuda.synchronize()
+        if getattr(trainer.model.model, 'vision_tower', None) is not None:
+            del trainer.model.model.vision_tower
         trainer.save_model(output_dir)
         return
 

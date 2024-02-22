@@ -185,3 +185,63 @@
     * aligh_affinity; hidden_embeds（使用所有token）align_logits * 5
     * align_vision_tower（teacher使用LLaVA，经过映射层后的特征维度可以保持一致）
     * epoch=1
+
+
+* ./output/distill/finetune/llava_MobileLLaMA-2.7B-Chat_exp45
+    * 使用20层的LLaVA，使用LLaVA-13b的前面20层初始化；
+    * 随机初始化映射层和patch—embedding；不使用align_vision_tower的loss
+    * aligh_affinity; hidden_embeds（使用所有token）align_logits * 5
+    * align_vision_tower（teacher使用LLaVA，经过映射层后的特征维度可以保持一致）
+    * epoch=1
+
+
+* ./output/distill/finetune/llava_MobileLLaMA-2.7B-Chat_exp46
+    * 使用30层的LLaVA，使用LLaVA-13b的前面30层初始化；
+    * aligh_affinity; hidden_embeds（使用所有token）align_logits * 5; align_attn_map;
+    * epoch=1
+    * textvqa: 57.2
+
+* ./output/distill/finetune/llava_MobileLLaMA-2.7B-Chat_exp47
+    * 使用30层的LLaVA，使用LLaVA-13b的前面30层初始化；
+    * aligh_affinity; hidden_embeds（使用所有token）align_logits * 5; align_attn_map;
+    * epoch=3
+
+* ./output/distill/finetune/llava_MobileLLaMA-2.7B-Chat_exp48
+    * 使用30层的LLaVA，使用LLaVA-13b的前面30层初始化；使用llava的映射层
+    * align_logits * 5;
+    * epoch=1
+    * textvqa: 57.4
+
+* ./output/distill/finetune/llava_MobileLLaMA-2.7B-Chat_exp49
+    * 使用30层的LLaVA，使用LLaVA-13b的前面30层初始化；使用llava的映射层
+    * epoch=1
+    
+    
+* ./output/distill/finetune/llava_MobileLLaMA-2.7B-Chat_exp50
+    * 使用30层的LLaVA，使用LLaVA-13b的前面30层初始化；使用llava的映射层
+    * align_logits; 不使用原本自回归loss
+    * epoch=1
+    * textvqa: 56.5
+
+* ./output/distill/finetune/llava_MobileLLaMA-2.7B-Chat_exp51
+    * 使用20层的LLaVA，使用LLaVA-13b-30-layer的前面20层和映射层初始化
+    * align_logits
+    * epoch=1
+    * textvqa: 50.1
+
+* ./output/distill/finetune/llava_MobileLLaMA-2.7B-Chat_exp53
+    * student: clip-vit-base-patch16 + MobileLLaMA-2.7B-Chat
+    * teacher: LLaVA-13B
+    * align_logits(仅有answer token产生loss); 使用5120个token
+
+* ./output/distill/finetune/llava_MobileLLaMA-2.7B-Chat_exp54
+    * student: clip-vit-base-patch16 + MobileLLaMA-2.7B-Chat
+    * teacher: LLaVA-13B
+    * align_logits(仅有answer token产生loss)；使用2048个token（默认值）
+    * textvqa：41.1
+
+* ./output/distill/finetune/llava_MobileLLaMA-2.7B-Chat_exp55
+    * student: clip-vit-base-patch16 + MobileLLaMA-2.7B-Chat
+    * teacher: LLaVA-13B
+    * align_logits(仅有answer token产生loss); 使用2048个token（默认值）；
+    * finetune最后6层vit

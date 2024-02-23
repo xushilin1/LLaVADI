@@ -233,6 +233,7 @@ class DistillModel(nn.Module):
                         F.softmax(teacher_logits / 0.7, dim=-1),
                         reduction='batchmean',
                     ) * 0.7 * 0.7
+                    # distill_loss += F.cross_entropy(stu_logits, teacher_logits.argmax(-1))
             distill_loss /= labels.shape[0]
             distill_loss *= 5.0
             loss += distill_loss

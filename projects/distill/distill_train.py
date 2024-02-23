@@ -603,12 +603,12 @@ def safe_save_model_for_hf_trainer(trainer: transformers.Trainer,
         if getattr(trainer.args, "tune_vision_tower", False):
             if trainer.deepspeed:
                 torch.cuda.synchronize()
-            trainer.model.get_vision_tower().image_processor.save_pretrained(
+            trainer.model.student_model.get_vision_tower().image_processor.save_pretrained(
                 os.path.join(output_dir, 'vision_tower'))
-            trainer.model.get_vision_tower().vision_tower.vision_model.config.save_pretrained(
+            trainer.model.student_model.get_vision_tower().vision_tower.vision_model.config.save_pretrained(
                 os.path.join(output_dir, 'vision_tower'))
             weight_to_save = get_vision_tower_state_maybe_zero_3(
-                trainer.model.get_vision_tower().vision_tower.named_parameters())
+                trainer.model.student_model.get_vision_tower().vision_tower.named_parameters())
             if trainer.args.local_rank == 0 or trainer.args.local_rank == -1:
                 torch.save(weight_to_save, os.path.join(
                     output_dir, 'vision_tower/pytorch_model.bin'))
@@ -617,20 +617,20 @@ def safe_save_model_for_hf_trainer(trainer: transformers.Trainer,
     if getattr(trainer.args, "tune_vision_tower", False) or getattr(trainer.args, "tune_entire_model", False):
         if trainer.deepspeed:
             torch.cuda.synchronize()
-        trainer.model.get_vision_tower().image_processor.save_pretrained(
+        trainer.model.student_model.get_vision_tower().image_processor.save_pretrained(
             os.path.join(output_dir, 'vision_tower'))
-        trainer.model.get_vision_tower().vision_tower.vision_model.config.save_pretrained(
+        trainer.model.student_model.get_vision_tower().vision_tower.vision_model.config.save_pretrained(
             os.path.join(output_dir, 'vision_tower'))
         weight_to_save = get_vision_tower_state_maybe_zero_3(
-            trainer.model.get_vision_tower().vision_tower.named_parameters())
+            trainer.model.student_model.get_vision_tower().vision_tower.named_parameters())
         if trainer.args.local_rank == 0 or trainer.args.local_rank == -1:
             torch.save(weight_to_save, os.path.join(
                 output_dir, 'vision_tower/pytorch_model.bin'))
 
     if trainer.deepspeed:
         torch.cuda.synchronize()
-        if getattr(trainer.model.model, 'vision_tower', None) is not None:
-            del trainer.model.model.vision_tower
+        if getattr(trainer.model.student_model.model, 'vision_tower', None) is not None:
+            del trainer.model.student_model.model.vision_tower
         trainer.save_model(output_dir)
         return
 

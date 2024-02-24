@@ -7,9 +7,11 @@ deepspeed projects/distill_checkout/distill_train.py \
     --deepspeed ./scripts/zero3.json \
     --model_name_or_path mtgv/MobileLLaMA-2.7B-Chat \
     --model_variant mobilevlm \
+    --align_logits True \
+    --align_hidden_embeds True \
     --version v1 \
-    --data_path ./playground/data/llava_v1_5_mix665k.json \
-    --image_folder ./playground/data \
+    --data_path ./data/LLaVA-Instruct/llava_v1_5_mix665k.json \
+    --image_folder ./data/LLaVA-Instruct \
     --vision_tower openai/clip-vit-large-patch14-336 \
     --pretrain_mm_mlp_adapter ./checkpoints/MobileVLM_MobileLLaMA_2_7B-pretrain/mm_projector.bin \
     --mm_projector_type mlp2x_gelu \

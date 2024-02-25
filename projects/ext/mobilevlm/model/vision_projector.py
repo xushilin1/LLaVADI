@@ -29,7 +29,7 @@ class LDPBlock(nn.Module):
     def forward(self, x):
         b, num_tokens, c = x.shape
         h = int(math.sqrt(num_tokens))
-        x = self.mlp(x) 
+        x = self.mlp(x)
         x = x.permute(0, 2, 1).reshape(b, -1, h, h)
         x = self.mb_block(x)
         x = x.flatten(2).permute(0, 2, 1)
@@ -60,7 +60,7 @@ class TokenDownLayer(nn.Module):
         x = self.dwn(x)
         x = x.flatten(2).transpose(1, 2)
         return x
-    
+
 class PosInjectLayer(nn.Module):
     # https://github.com/Meituan-AutoML/Twins/blob/main/gvt.py
     def __init__(self, in_dim: int, out_dim: int, stride: int = 1) -> None:
@@ -79,7 +79,7 @@ class PosInjectLayer(nn.Module):
         return x
 
 class LDPNetProjector(nn.Module):
-    
+
     def __init__(self, config=None):
         super().__init__()
         self.model = LDPBlock(config)
@@ -104,6 +104,9 @@ class LDPNetV2Projector(nn.Module):
 
 def build_vision_projector(config, delay_load=False, **kwargs):
     projector_type = getattr(config, 'mm_projector_type', 'linear')
+    if projector_type != 'ldpnet':
+        from llava.model.multimodal_projector.builder import build_vision_projector as bvp
+        bvp(config, **kwargs)
 
     if projector_type == 'linear':
         return nn.Linear(config.mm_hidden_size, config.hidden_size)

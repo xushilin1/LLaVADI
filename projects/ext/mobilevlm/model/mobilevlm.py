@@ -2,8 +2,8 @@ import torch
 import torch.nn as nn
 from abc import ABC, abstractmethod
 from transformers import AutoTokenizer, BitsAndBytesConfig
-from ext.mobilevlm.model.vision_encoder import build_vision_tower
-from ext.mobilevlm.model.vision_projector import build_vision_projector
+from projects.ext.mobilevlm.model.vision_encoder import build_vision_tower
+from projects.ext.mobilevlm.model.vision_projector import build_vision_projector
 from llava.constants import IGNORE_INDEX, IMAGE_TOKEN_INDEX, \
     DEFAULT_IMAGE_PATCH_TOKEN, DEFAULT_IM_START_TOKEN, DEFAULT_IM_END_TOKEN
 

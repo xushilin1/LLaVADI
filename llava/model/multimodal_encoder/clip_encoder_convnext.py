@@ -1,6 +1,9 @@
 import torch
 import torch.nn as nn
-import open_clip
+try:
+    import open_clip
+except ImportError:
+    open_clip = None
 from transformers import CLIPVisionModel, CLIPImageProcessor, CLIPVisionConfig
 
 class CLIPVisionTowerConvNext(nn.Module):
@@ -55,21 +58,21 @@ class CLIPVisionTowerConvNext(nn.Module):
             image_features_dict = self.extract_features(images)
             image_features = image_features_dict['res4']
             image_features = image_features.reshape(*image_features.shape[:2],-1).permute(0,2,1)
-        
+
         return image_features
         # return image_features, image_features_dict
-    
+
     def extract_features(self, x):
         self.eval()
         with torch.no_grad():
             out = {}
             x = x.to(self.vision_tower.trunk.stem.state_dict()['1.bias'].dtype)
             x = self.vision_tower.trunk.stem(x)
-            out['stem'] = x.contiguous() 
+            out['stem'] = x.contiguous()
             for i in range(4):
                 x = self.vision_tower.trunk.stages[i](x)
-                out[f'res{i+2}'] = x.contiguous() 
-            
+                out[f'res{i+2}'] = x.contiguous()
+
             x = self.vision_tower.trunk.norm_pre(x)
             out['clip_vis_dense'] = x.contiguous()
             return out

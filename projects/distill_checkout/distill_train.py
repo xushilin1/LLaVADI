@@ -56,6 +56,8 @@ class ModelArguments:
     mm_use_im_start_end: bool = field(default=False)
     mm_use_im_patch_token: bool = field(default=True)
     mm_vision_select_feature: Optional[str] = field(default="patch")
+    # additional variables
+    model_variant: Optional[str] = field(default=None)
 
 
 @dataclass
@@ -222,7 +224,7 @@ class LazySupervisedDataset(Dataset):
             data_dict['stu_image'] = torch.zeros(3, stu_crop_size['height'], stu_crop_size['width'])
             data_dict['tea_image'] = torch.zeros(3, tea_crop_size['height'], tea_crop_size['width'])
         return data_dict
-    
+
 
 @dataclass
 class DataCollatorForSupervisedDataset(object):
@@ -277,7 +279,7 @@ def make_supervised_data_module(tokenizer: transformers.PreTrainedTokenizer,
 
 def unlock_vit(training_args, model_args, vision_tower):
     # lr_of_vit = training_args.vision_tower_lr if training_args.vision_tower_lr is not None and training_args.vision_tower_lr != 0 else training_args.learning_rate
-    
+
     # rank0_print(f'Tune the vision tower! LR for ViT is {lr_of_vit}.')
     if model_args.tune_vit_from_layer != -1:
         rank0_print(f'Tune the vision tower from layer {model_args.tune_vit_from_layer}!')
@@ -330,6 +332,13 @@ def train():
             model = LlavaMPTForCausalLM.from_pretrained(
                 model_args.model_name_or_path,
                 config=config,
+                cache_dir=training_args.cache_dir,
+                **bnb_model_from_pretrained_args
+            )
+        elif model_args.model_variant is not None and model_args.model_variant == 'mobilevlm':
+            from projects.ext.mobilevlm.model.mobilellama import MobileLlamaForCausalLM
+            model = MobileLlamaForCausalLM.from_pretrained(
+                model_args.model_name_or_path,
                 cache_dir=training_args.cache_dir,
                 **bnb_model_from_pretrained_args
             )
@@ -418,7 +427,7 @@ def train():
             model_args=model_args,
             fsdp=training_args.fsdp
         )
-        
+
         vision_tower = model.get_vision_tower()
         vision_tower.to(dtype=compute_dtype, device=training_args.device)
 
@@ -483,7 +492,7 @@ def train():
                         module = module.to(torch.bfloat16)
 
     teacher_model = LlavaLlamaForCausalLM.from_pretrained(
-        "checkpoints/llava-v1.5-13b",
+        "liuhaotian/llava-v1.5-13b",
     )
 
     teacher_model.config.use_cache = False
@@ -496,7 +505,7 @@ def train():
     teacher_model.config.mm_use_im_patch_token = model_args.mm_use_im_patch_token
 
     teacher_tokenizer = transformers.AutoTokenizer.from_pretrained(
-        "checkpoints/llava-v1.5-13b",
+        "liuhaotian/llava-v1.5-13b",
         model_max_length=training_args.model_max_length,
         use_fast=False,
         padding_side="right"
@@ -510,7 +519,7 @@ def train():
 
     data_module = make_supervised_data_module(tokenizer=tokenizer,
                                               data_args=data_args)
-    
+
 
     # from llava.train.llava_trainer import LengthGroupedSampler
     # from torch.utils.data import DataLoader
@@ -654,6 +663,6 @@ class Colors:
     BOLD = '\033[1m'
     UNDERLINE = '\033[4m'
 
-    
+
 if __name__ == "__main__":
     train()

@@ -104,6 +104,15 @@ class GemmaTokenizer(PreTrainedTokenizer):
         unk_token = AddedToken(unk_token, normalized=False, special=True) if isinstance(unk_token, str) else unk_token
         pad_token = AddedToken(pad_token, normalized=False, special=True) if isinstance(pad_token, str) else pad_token
 
+        self._added_tokens_decoder: Dict[int, AddedToken] = {}
+        self._added_tokens_decoder[0] = pad_token
+        self._added_tokens_decoder[1] = eos_token
+        self._added_tokens_decoder[2] = bos_token
+        self._added_tokens_decoder[3] = unk_token
+        self._added_tokens_decoder[106] = AddedToken('<start_of_turn>')
+        self._added_tokens_decoder[107] = AddedToken('<end_of_turn>')
+
+        
         self.vocab_file = vocab_file
         self.add_bos_token = add_bos_token
         self.add_eos_token = add_eos_token
@@ -169,46 +178,22 @@ class GemmaTokenizer(PreTrainedTokenizer):
         token = self.sp_model.IdToPiece(index)
         return token
 
-    def _decode(
-        self,
-        token_ids: List[int],
-        skip_special_tokens: bool = False,
-        spaces_between_special_tokens: bool = False,
-        **kwargs,
-    ) -> str:
-        sub_texts = []
-        current_sub_text = []
-        for ids in token_ids:
-            if skip_special_tokens and ids in self.all_special_ids:
-                continue
-            if ids in self._added_tokens_decoder:
-                if current_sub_text:
-                    sub_texts.append(self.sp_model.decode(current_sub_text))
-                sub_texts.append(self._added_tokens_decoder[ids].content)
-                current_sub_text = []
-            else:
-                current_sub_text.append(ids)
-        if current_sub_text:
-            sub_texts.append(self.sp_model.decode(current_sub_text))
-
-        if spaces_between_special_tokens:
-            sub_texts = " ".join(sub_texts)
-        else:
-            sub_texts = "".join(sub_texts)
-
-        return sub_texts
-
     def convert_tokens_to_string(self, tokens):
         """Converts a sequence of tokens (string) in a single string."""
         current_sub_tokens = []
         out_string = ""
+        prev_is_special = False
         for token in tokens:
             # make sure that special tokens are not decoded using sentencepiece model
-            if token in self._added_tokens_encoder:
+            if token in self.all_special_tokens:
+                if not prev_is_special and i != 0:
+                    out_string += " "
                 out_string += self.sp_model.decode(current_sub_tokens) + token
+                prev_is_special = True
                 current_sub_tokens = []
             else:
                 current_sub_tokens.append(token)
+                prev_is_special = False
         out_string += self.sp_model.decode(current_sub_tokens)
         return out_string
 
@@ -323,3 +308,63 @@ class GemmaTokenizer(PreTrainedTokenizer):
             output += [1] * len(bos_token_id + token_ids_1 + eos_token_id)
 
         return output
+
+    def _build_conversation_input_ids(self, conversation: "Conversation") -> List[int]:
+        """Builds the input ids for a conversation.
+        This is the format used in the provided examples. System prompts should be manually added at the beginning of
+        the conversation. If no system prompt is given, the `DEFAULT_SYSTEM_PROMPT` will be used.
+        ```
+        <bos>[INST] B_SYS SytemPrompt E_SYS Prompt [/INST] Answer <eos>
+        <bos>[INST] Prompt [/INST] Answer <eos>
+        <bos>[INST] Prompt [/INST]
+        ```
+
+        If you want to use your own system prompt, make sure to use both `B_SYS` and `E_SYS` use the following:
+        ```python
+        >>> from transformers import Conversation
+
+        >>> Conversation(
+        ...     "<<SYS>>\n Only answer with emojis, and charades\n<</SYS>>\n\nHow can I build a house in 10 septs?"
+        ... )
+        ```
+        Args:
+            conversation (`Conversation`):
+                Conversation to build input ids for.
+        Returns:
+            `List[int]`:
+                Input ids for the conversation.
+        """
+        dialogue = list(conversation.iter_texts())
+        if not all([is_user for is_user, msg in dialogue[::2]]) or not all(
+            [not is_user for is_user, msg in dialogue[1::2]]
+        ):
+            raise ValueError(
+                "The model only supports 'user' and 'assistant' roles, starting with user and alternating (u/a/u/a/u...)"
+            )
+
+        dialog_tokens: List[int] = []
+        if len(conversation.past_user_inputs) > 0:
+            if not conversation.past_user_inputs[0].startswith(B_SYS) or E_SYS not in conversation.past_user_inputs[0]:
+                conversation.past_user_inputs[0] = (
+                    B_SYS + DEFAULT_SYSTEM_PROMPT + E_SYS + conversation.past_user_inputs[0]
+                )
+        elif not dialogue[0][1].startswith(B_SYS) or E_SYS not in dialogue[0][1]:
+            dialogue[0] = (dialogue[0][0], B_SYS + DEFAULT_SYSTEM_PROMPT + E_SYS + dialogue[0][1])
+
+        dialog_tokens += sum(
+            [
+                [self.bos_token_id]
+                + self.encode(
+                    f"{B_INST} {(prompt[1]).strip()} {E_INST} {(answer[1]).strip()} ", add_special_tokens=False
+                )
+                + [self.eos_token_id]
+                for prompt, answer in zip(dialogue[::2], dialogue[1::2])
+            ],
+            [],
+        )
+        if not (dialogue[-1][0]):
+            raise ValueError(f"Last message must be from user, got {dialogue[-1]['role']}")
+        dialog_tokens += [self.bos_token_id] + self.encode(
+            f"{B_INST} {(dialogue[-1][1]).strip()} {E_INST}", add_special_tokens=False
+        )
+        return dialog_tokens

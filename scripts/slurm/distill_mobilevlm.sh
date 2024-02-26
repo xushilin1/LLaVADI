@@ -6,7 +6,6 @@ srun -p ${PARTITION}  --job-name=${JOB_NAME} --gres=gpu:${GPUS_PER_NODE} --ntask
 deepspeed projects/distill/distill_train.py \
     --deepspeed ./scripts/zero3.json \
     --model_name_or_path mtgv/MobileLLaMA-2.7B-Chat \
-    --model_variant mobilevlm \
     --align_logits True \
     --align_hidden_embeds True \
     --version v1 \

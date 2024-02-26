@@ -25,6 +25,7 @@ from transformers.modeling_outputs import CausalLMOutputWithPast
 
 from ..llava_arch import LlavaMetaModel, LlavaMetaForCausalLM
 
+from ..model_factory import register_model, register_tokenizer
 
 class LlavaConfig(LlamaConfig):
     model_type = "llava"
@@ -36,7 +37,7 @@ class LlavaLlamaModel(LlavaMetaModel, LlamaModel):
     def __init__(self, config: LlamaConfig):
         super(LlavaLlamaModel, self).__init__(config)
 
-
+@register_model('llama')
 class LlavaLlamaForCausalLM(LlamaForCausalLM, LlavaMetaForCausalLM):
     config_class = LlavaConfig
 
@@ -106,6 +107,14 @@ class LlavaLlamaForCausalLM(LlamaForCausalLM, LlavaMetaForCausalLM):
         if images is not None:
             _inputs['images'] = images
         return _inputs
+
+
+@register_tokenizer('llama')
+def get_tokenizer():
+    from transformers import AutoTokenizer
+    def post_init(tokenizer):
+        return tokenizer
+    return AutoTokenizer, post_init
 
 AutoConfig.register("llava", LlavaConfig)
 AutoModelForCausalLM.register(LlavaConfig, LlavaLlamaForCausalLM)

@@ -35,7 +35,7 @@ from llava.model import *
 from llava.mm_utils import tokenizer_image_token
 
 from PIL import Image
-
+from llava.model.model_factory import ModelSelect, TokenizerSelect
 
 local_rank = None
 
@@ -792,7 +792,7 @@ def train():
                 **bnb_model_from_pretrained_args
             )
         else:
-            model = LlavaLlamaForCausalLM.from_pretrained(
+            model = ModelSelect(model_args.model_name_or_path).from_pretrained(
                 model_args.model_name_or_path,
                 cache_dir=training_args.cache_dir,
                 **bnb_model_from_pretrained_args
@@ -847,13 +847,15 @@ def train():
             padding_side="right"
         )
     else:
-        tokenizer = transformers.AutoTokenizer.from_pretrained(
+        Tokenizer, init_tokenizer = TokenizerSelect(model_args.model_name_or_path)()
+        tokenizer = Tokenizer.from_pretrained(
             model_args.model_name_or_path,
             cache_dir=training_args.cache_dir,
             model_max_length=training_args.model_max_length,
             padding_side="right",
             use_fast=False,
         )
+        tokenizer = init_tokenizer(tokenizer)
 
     if model_args.version == "v0":
         if tokenizer.pad_token is None:

@@ -3,7 +3,7 @@
 PYTHONPATH="$(dirname $0)/..":$PYTHONPATH \
 CUDA_HOME=$CONDA_PREFIX \
 srun -p ${PARTITION}  --job-name=${JOB_NAME} --gres=gpu:${GPUS_PER_NODE} --ntasks=1 --ntasks-per-node=1 --exclusive --quotatype=spot \
-deepspeed projects/distill_checkout/distill_train.py \
+deepspeed projects/distill/distill_train.py \
     --deepspeed ./scripts/zero3.json \
     --model_name_or_path mtgv/MobileLLaMA-2.7B-Chat \
     --model_variant mobilevlm \
@@ -14,7 +14,7 @@ deepspeed projects/distill_checkout/distill_train.py \
     --image_folder ./data/LLaVA-Instruct \
     --vision_tower openai/clip-vit-large-patch14-336 \
     --pretrain_mm_mlp_adapter ./checkpoints/MobileVLM_MobileLLaMA_2_7B-pretrain/mm_projector.bin \
-    --mm_projector_type mlp2x_gelu \
+    --mm_projector_type ldpnet \
     --mm_vision_select_layer -2 \
     --mm_use_im_start_end False \
     --mm_use_im_patch_token False \

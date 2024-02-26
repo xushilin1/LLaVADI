@@ -7,7 +7,7 @@ deepspeed projects/distill/distill_train.py \
     --deepspeed ./scripts/zero3.json \
     --model_name_or_path mtgv/MobileLLaMA-2.7B-Chat \
     --align_logits True \
-    --align_hidden_embeds True \
+    --align_hidden_embeds False \
     --version v1 \
     --data_path ./data/LLaVA-Instruct/llava_v1_5_mix665k.json \
     --image_folder ./data/LLaVA-Instruct \

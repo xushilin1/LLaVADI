@@ -21,6 +21,7 @@ from transformers import AutoTokenizer, AutoModelForCausalLM, AutoConfig, BitsAn
 import torch
 from llava.model import *
 from llava.constants import DEFAULT_IMAGE_PATCH_TOKEN, DEFAULT_IM_START_TOKEN, DEFAULT_IM_END_TOKEN
+from llava.model.model_factory import ModelSelect, TokenizerSelect
 
 
 def load_pretrained_model(model_path, model_base, model_name, load_8bit=False, load_4bit=False, device_map="auto", device="cpu", **kwargs):
@@ -102,8 +103,17 @@ def load_pretrained_model(model_path, model_base, model_name, load_8bit=False, l
                 tokenizer = AutoTokenizer.from_pretrained(model_path, use_fast=True)
                 model = LlavaMPTForCausalLM.from_pretrained(model_path, low_cpu_mem_usage=True, **kwargs)
             else:
-                tokenizer = AutoTokenizer.from_pretrained(model_path, use_fast=False)
-                model = LlavaLlamaForCausalLM.from_pretrained(model_path, low_cpu_mem_usage=True, **kwargs)
+                model = ModelSelect(model_path).from_pretrained(
+                    model_path,
+                    low_cpu_mem_usage=True, 
+                    **kwargs
+                )
+                Tokenizer, init_tokenizer = TokenizerSelect(model_path)()
+                tokenizer = Tokenizer.from_pretrained(
+                    model_path,
+                    use_fast=False
+                )
+                tokenizer = init_tokenizer(tokenizer)
     else:
         # Load language model
         if model_base is not None:

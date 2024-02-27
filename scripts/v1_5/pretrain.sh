@@ -1,9 +1,9 @@
 #!/bin/bash
 PYTHONPATH='.' \
-srun -p s1_mm_research --ntasks-per-node=1 --gres=gpu:8 --cpus-per-task=10 --nodes=1 \
+srun -p s1_mm_research --quotatype=auto --ntasks-per-node=1 --gres=gpu:8 --cpus-per-task=10 --nodes=1 \
 deepspeed llava/train/train_mem.py \
     --deepspeed ./scripts/zero2.json \
-    --model_name_or_path checkpoints/vicuna-13b-v1.5 \
+    --model_name_or_path checkpoints/MobileLLaMA-1.4B-Chat \
     --version plain \
     --data_path datasets/LLaVA-Pretrain/blip_laion_cc_sbu_558k.json \
     --image_folder datasets/LLaVA-Pretrain/images \
@@ -14,7 +14,7 @@ deepspeed llava/train/train_mem.py \
     --mm_use_im_start_end False \
     --mm_use_im_patch_token False \
     --bf16 True \
-    --output_dir ./output/llava-v1.5-13b-pretrain \
+    --output_dir output/pretrain/MobileLLaMA-1.4B-Chat1 \
     --num_train_epochs 1 \
     --per_device_train_batch_size 32 \
     --per_device_eval_batch_size 4 \

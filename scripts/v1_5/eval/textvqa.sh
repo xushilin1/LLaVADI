@@ -1,7 +1,7 @@
 #!/bin/bash
 MODEL_PATH=$1
 
-CUDA_HOME=$CONDA_PREFIX PYTHONPATH=. srun -p ${PARTITION} --quotatype=spot --job-name=${JOB_NAME} --gres=gpu:8 --ntasks-per-node=1 --nodes=1 --exclusive \
+CUDA_HOME=$CONDA_PREFIX PYTHONPATH=. srun -p ${PARTITION} --quotatype=spot --job-name=${JOB_NAME} --gres=gpu:1 --ntasks-per-node=1 --nodes=1 --exclusive \
 python llava/eval/model_vqa_loader.py \
     --model-path ${MODEL_PATH} \
     --question-file ./data/eval/textvqa/llava_textvqa_val_v051_ocr.jsonl \

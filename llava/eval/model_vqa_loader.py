@@ -59,11 +59,16 @@ class CustomDataset(Dataset):
 
         input_ids = tokenizer_image_token(prompt, self.tokenizer, IMAGE_TOKEN_INDEX, return_tensors='pt')
 
-        return input_ids, image_tensor, line
+        return input_ids, image_tensor
 
     def __len__(self):
         return len(self.questions)
 
+def collate_fn(batch):
+    input_ids, image_tensors = zip(*batch)
+    input_ids = torch.stack(input_ids, dim=0)
+    image_tensors = torch.stack(image_tensors, dim=0)
+    return input_ids, image_tensors
 
 # DataLoader
 def create_data_loader(args, questions, image_folder, tokenizer, image_processor, model_config, batch_size=1, num_workers=4):
@@ -111,12 +116,9 @@ def eval_model(args):
     data_loader = create_data_loader(args, questions, args.image_folder, tokenizer, image_processor, model.model.config)
 
     result_part = []
-    for (input_ids, image_tensor, line) in tqdm(data_loader):
-        if isinstance(line['question_id'], torch.Tensor):
-            idx = line["question_id"].item()
-        else:
-            idx = line['question_id'][0]
-        cur_prompt = line["text"][0]
+    for (input_ids, image_tensor), line in zip(data_loader, questions):
+        idx = line['question_id']
+        cur_prompt = line["text"]
 
         input_ids = input_ids.to(device='cuda', non_blocking=True)
 

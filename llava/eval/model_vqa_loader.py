@@ -1,4 +1,6 @@
 import argparse
+import subprocess
+
 import torch
 import os
 import json
@@ -100,7 +102,7 @@ def eval_model(args):
     questions = get_chunk(questions, args.num_chunks, args.chunk_idx)
     answers_file = os.path.expanduser(args.answers_file)
     os.makedirs(os.path.dirname(answers_file), exist_ok=True)
-    
+
 
     if 'plain' in model_name and 'finetune' not in model_name.lower() and 'mmtag' not in args.conv_mode:
         args.conv_mode = args.conv_mode + '_mmtag'
@@ -153,7 +155,7 @@ def eval_model(args):
     shape_tensor = torch.tensor(part_tensor.shape, device='cuda')
     shape_list = [shape_tensor.clone() for _ in range(world_size)]
     dist.all_gather(shape_list, shape_tensor) # 每个进程占据一个位置
-    
+
     shape_max = torch.tensor(shape_list).max()
     part_send = torch.zeros(shape_max, dtype=torch.uint8, device='cuda')
     part_send[:shape_tensor[0]] = part_tensor
@@ -177,7 +179,7 @@ def eval_model(args):
         ans_file = open(answers_file, "w")
         for res in ordered_results:
             ans_file.write(json.dumps(res) + '\n')
-       
+
         ans_file.close()
 
 if __name__ == "__main__":
@@ -194,10 +196,36 @@ if __name__ == "__main__":
     parser.add_argument("--top_p", type=float, default=None)
     parser.add_argument("--num_beams", type=int, default=1)
     parser.add_argument("--max_new_tokens", type=int, default=128)
-    parser.add_argument("--local_rank", default=0, type=int)
     args = parser.parse_args()
 
     world_size = torch.cuda.device_count()
-    args.distributed = world_size > 1
-    
+    args.distributed = True
+
+    proc_id = int(os.environ['SLURM_PROCID'])
+    ntasks = int(os.environ['SLURM_NTASKS'])
+    node_list = os.environ['SLURM_NODELIST']
+    # Not sure when this environment variable could be None, so use a fallback
+    local_rank_env = os.environ.get('SLURM_LOCALID', None)
+    if local_rank_env is not None:
+        local_rank = int(local_rank_env)
+    else:
+        num_gpus = torch.cuda.device_count()
+        local_rank = proc_id % num_gpus
+    torch.cuda.set_device(local_rank)
+    addr = subprocess.getoutput(
+        f'scontrol show hostname {node_list} | head -n1')
+    # specify master port
+    if 'MASTER_PORT' in os.environ:
+        pass  # use MASTER_PORT in the environment variable
+    else:
+        # 29500 is torch.distributed default port
+        os.environ['MASTER_PORT'] = '29500'
+    # use MASTER_ADDR in the environment variable if it already exists
+    if 'MASTER_ADDR' not in os.environ:
+        os.environ['MASTER_ADDR'] = addr
+    os.environ['WORLD_SIZE'] = str(ntasks)
+    os.environ['LOCAL_RANK'] = str(local_rank)
+    os.environ['RANK'] = str(proc_id)
+
+
     eval_model(args)

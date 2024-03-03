@@ -211,7 +211,10 @@ class DistillModel(nn.Module):
         
         if self.args.align_logits:
             distill_loss = 0
+            image_masks, answer_masks = self.get_image_masks(input_ids, stu_labels, stu_attention_mask)
             for i in range(labels.shape[0]):
+                if answer_masks[i].sum() == 0:
+                    continue
                 if self.args.align_logits_all:
                     teacher_logits = teacher_result.logits[i][stu_attention_mask[i]]
                     stu_logits = student_result.logits[i][stu_attention_mask[i]]
@@ -235,9 +238,43 @@ class DistillModel(nn.Module):
                     ) * 0.7 * 0.7
                     # distill_loss += F.cross_entropy(stu_logits, teacher_logits.argmax(-1))
             distill_loss /= labels.shape[0]
-            distill_loss *= 5.0
             loss += distill_loss
         
+        if self.args.align_sparse_logits:
+            distill_loss = 0
+            image_masks, answer_masks = self.get_image_masks(input_ids, stu_labels, stu_attention_mask)
+            stu_embeds =  student_result.hidden_states[-1] # TODO: use hidden embedds or logits
+            tea_embeds = teacher_result.hidden_states[-1]
+            # stu_embeds = student_result.logits
+            # tea_embeds = teacher_result.logits
+            for i in range(labels.shape[0]):
+                img_mask, ans_mask = image_masks[i], answer_masks[i]
+                if img_mask.sum() == 0 or ans_mask.sum() == 0:
+                    continue
+                tea_embed = F.normalize(tea_embeds[i], dim=-1)
+                affinity = tea_embed[img_mask] @ tea_embed[ans_mask].T
+
+                index = affinity.view(-1).argsort(descending=True) // affinity.shape[0]
+                index = index[:200].unique()
+
+                stu_shift_logits = student_result.logits[i]
+                stu_logits = stu_shift_logits[stu_labels[i] != IGNORE_INDEX]
+                
+                teacher_shift_logits = teacher_result.logits[i]
+                teacher_logits = teacher_shift_logits[teacher_labels[i] != IGNORE_INDEX]
+                
+                # FIXME: maybe truncate by model_max_length
+                stu_logits = stu_logits[:teacher_logits.shape[0]]
+                
+                distill_loss += F.kl_div(
+                    F.log_softmax(stu_logits[index] / 0.7, dim=-1),
+                    F.softmax(teacher_logits[index] / 0.7, dim=-1),
+                    reduction='batchmean',
+                ) * 0.7 * 0.7
+
+            distill_loss /= labels.shape[0]
+            loss += distill_loss
+
         if self.args.align_affinity:
             teacher_embeds = torch.stack(teacher_result.hidden_states, dim=1) #(bs, layers, N, 5120)
             student_embeds = torch.stack(student_result.hidden_states, dim=1) #(bs, layers, N, 2048)
@@ -263,6 +300,36 @@ class DistillModel(nn.Module):
             affinity_loss = (affinity_loss * masks).sum() / (masks.sum() + 1e-6)
 
             loss += affinity_loss
+
+        if self.args.align_contrastive_affinity:
+            contrastive_loss = 0
+            stu_embeds =  student_result.hidden_states[-1] # (bs, N, D)
+            tea_embeds = teacher_result.hidden_states[-1]
+            image_masks, answer_masks = self.get_image_masks(input_ids, stu_labels, stu_attention_mask)
+            bs = input_ids.shape[0]
+            for i in range(bs):
+                if image_masks[i].sum() == 0 or answer_masks[i].sum() == 0:
+                    continue
+                for j in range(bs):
+                    if image_masks[j].sum() == 0 or answer_masks[j].sum() == 0:
+                        continue
+                    stu_img_embed = F.normalize(stu_embeds[i][image_masks[i]], dim=-1) # (num_img, D)
+                    tea_img_embed = F.normalize(tea_embeds[i][image_masks[i]], dim=-1)
+
+                    stu_ans_embed = F.normalize(stu_embeds[j][answer_masks[j]], dim=-1) # (num_token, D)
+                    tea_ans_embed = F.normalize(tea_embeds[j][answer_masks[j]], dim=-1)
+
+                    stu_img_ans = torch.matmul(stu_img_embed, stu_ans_embed.T)
+                    tea_img_ans = torch.matmul(tea_img_embed, tea_ans_embed.T)
+
+                    stu_ans_img = torch.matmul(stu_ans_embed, stu_img_embed.T)
+                    tea_ans_img = torch.matmul(tea_ans_embed, tea_img_embed.T)
+
+                    contrastive_loss += (
+                        F.cross_entropy(stu_img_ans, tea_img_ans) + 
+                        F.cross_entropy(stu_ans_img, tea_ans_img)
+                    ) / 2
+            loss += (contrastive_loss / bs / bs)
 
         if self.args.align_hidden_embeds:
             teacher_embeds = torch.stack(teacher_result.hidden_states, dim=1) #(bs, layers, N, 5120)
@@ -359,8 +426,10 @@ class DistillModel(nn.Module):
                 num_img_token = labels.shape[1] - input_ids.shape[1] + 1 # 196 or 576
                 image_token_indices = torch.where(cur_input_ids == IMAGE_TOKEN_INDEX)[0].item()
                 img_mask[image_token_indices:image_token_indices+num_img_token] = True
-                ans_mask = labels[batch_idx] != IGNORE_INDEX
-                ans_mask = ans_mask & attention_mask[batch_idx] # remove padding
+            ans_mask = labels[batch_idx] != IGNORE_INDEX
+            x = ans_mask.sum()
+            ans_mask = ans_mask & attention_mask[batch_idx] # remove padding
+            assert x == ans_mask.sum()
             image_masks.append(img_mask)
             answer_masks.append(ans_mask)
         image_masks = torch.stack(image_masks, dim=0)

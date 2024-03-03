@@ -95,6 +95,7 @@ class TrainingArguments(transformers.TrainingArguments):
     group_by_modality_length: bool = field(default=False)
     select_k: int = 16
     align_logits: bool = False
+    align_sparse_logits: bool = False
     align_logits_all: bool = False
     align_image_tokens: bool = False
     align_affinity: bool = False
@@ -102,6 +103,7 @@ class TrainingArguments(transformers.TrainingArguments):
     align_hidden_embeds: bool = False
     align_attn_map: bool = False
     align_vision_tower: bool = False
+    align_contrastive_affinity: bool = False
 
 def maybe_zero_3(param, ignore_status=False, name=None):
     from deepspeed import zero
@@ -507,6 +509,10 @@ def train():
     data_args.tea_image_processor = teacher_vision_tower.image_processor
     teacher_model.to(device=training_args.device, dtype=compute_dtype)
     teacher_model.requires_grad_(False)
+
+    model.requires_grad_(False)
+    for p in model.get_model().mm_projector.parameters():
+        p.requires_grad = True
 
     data_module = make_supervised_data_module(tokenizer=tokenizer,
                                               data_args=data_args)

@@ -95,6 +95,7 @@ class TrainingArguments(transformers.TrainingArguments):
     group_by_modality_length: bool = field(default=False)
     select_k: int = 16
     align_logits: bool = False
+    align_on_policy: bool = False
     align_sparse_logits: bool = False
     align_logits_all: bool = False
     align_image_tokens: bool = False

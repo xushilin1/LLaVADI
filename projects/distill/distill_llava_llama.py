@@ -82,6 +82,96 @@ class DistillModel(nn.Module):
         return_dict: Optional[bool] = None,
     ) -> Union[Tuple, CausalLMOutputWithPast]:
 
+        if self.args.align_on_policy and torch.rand() < 0.5:
+            from llava.constants import DEFAULT_IMAGE_TOKEN
+            from llava.conversation import conv_templates, SeparatorStyle
+            from llava.mm_utils import tokenizer_image_token, process_images, get_model_name_from_path
+            bs_new_input_ids, bs_new_attn_mask, bs_new_target = [], [], []
+            temperature = 1.0
+            eos_id = self.student_tokenizer.eos_token_id
+            try:
+                for i in range(len(input_ids)):
+                    new_target = []
+                    conv = conv_templates['v1'].copy()
+
+                    input_id = input_ids[i].clone()
+                    has_img = (input_id == IMAGE_TOKEN_INDEX).sum() > 0
+
+                    image_tensor = None
+                    if has_img:
+                        image_tensor = stu_images[i:i+1].to(dtype=self.student_model.dtype, device=self.student_model.device, non_blocking=True)
+                        input_id[input_id == IMAGE_TOKEN_INDEX] = self.student_tokenizer.pad_token_id
+                    
+                    conversations = self.student_tokenizer.decode(input_id, skip_special_tokens=True)
+                    conversations = conversations.split('USER: ')[1:]
+                    
+                    for conv_i, sent in enumerate(conversations):
+                        qs = sent.split('ASSISTANT')[0].strip()
+                        if conv_i == 0 and has_img:
+                            qs = DEFAULT_IMAGE_TOKEN + '\n' + qs
+                        conv.append_message("USER", qs)
+                        prompt = conv.get_prompt()
+                        input_ids_copy = tokenizer_image_token(prompt + "ASSISTANT:", self.student_tokenizer, IMAGE_TOKEN_INDEX, return_tensors='pt')
+                        new_input_ids = input_ids_copy.tolist()
+                        new_target.extend([IGNORE_INDEX] * (len(input_ids_copy) - len(new_target)))
+                        input_ids_copy = input_ids_copy.unsqueeze(0).to(self.student_model.device)
+                        with torch.no_grad():
+                            output_ids = self.student_model.generate(
+                                input_ids_copy,
+                                images=image_tensor,
+                                do_sample=True if temperature > 0 else False,
+                                temperature=temperature,
+                                top_p=None,
+                                num_beams=1,
+                                max_new_tokens=64,
+                                use_cache=True)
+                        input_token_len = input_ids_copy.shape[1]
+                        n_diff_input_output = (input_ids_copy != output_ids[:, :input_token_len]).sum().item()
+                        if n_diff_input_output > 0:
+                            raise ValueError(f'[Warning] {n_diff_input_output} output_ids are not the same as the input_ids')
+                        
+                        new_input_ids.extend(output_ids[0, input_token_len:].tolist())
+                        new_target.extend(output_ids[0, input_token_len:].tolist())
+                        if eos_id != output_ids[0, -1]:
+                            new_input_ids.append(eos_id) # </s>
+                            new_target.append(eos_id)
+                        outputs = self.student_tokenizer.batch_decode(output_ids[:, input_token_len:], skip_special_tokens=True)[0]
+                        
+                        outputs = outputs.strip()
+                        conv.append_message('ASSISTANT', outputs)
+                        
+                    if len(new_input_ids) > self.student_tokenizer.model_max_length:
+                        new_input_ids = new_input_ids[:self.student_tokenizer.model_max_length]
+                        new_target = new_target[:self.student_tokenizer.model_max_length]
+                    
+                    new_input_ids = torch.tensor(new_input_ids).to(input_ids)
+                    attn_mask = torch.ones_like(new_input_ids, dtype=torch.bool)
+                    new_target = torch.tensor(new_target).to(labels)
+
+                    assert len(new_input_ids) == len(new_target)
+
+                    bs_new_input_ids.append(new_input_ids)
+                    bs_new_attn_mask.append(attn_mask)
+                    bs_new_target.append(new_target)
+
+                input_ids = torch.nn.utils.rnn.pad_sequence(
+                    bs_new_input_ids,
+                    batch_first=True,
+                    padding_value=self.student_tokenizer.pad_token_id)
+                
+                attention_mask = torch.nn.utils.rnn.pad_sequence(
+                    bs_new_attn_mask,
+                    batch_first=True,
+                    padding_value=0)
+                
+                labels = torch.nn.utils.rnn.pad_sequence(
+                    bs_new_target,
+                    batch_first=True,
+                    padding_value=IGNORE_INDEX)
+            
+            except Exception as e:
+                print(e)
+            
         (
             teacher_input_ids,
             teacher_position_ids,

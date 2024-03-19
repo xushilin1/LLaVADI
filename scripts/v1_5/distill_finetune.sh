@@ -19,15 +19,17 @@ srun --jobid $SLURM_JOBID bash -c 'python -m torch.distributed.run \
  --master_addr $MASTER_ADDR --master_port $MASTER_PORT \
 projects/distill/distill_train.py \
     --align_logits True \
+    --align_on_policy True \
+    --align_contrastive_affinity False \
     --tune_entire_model False \
     --tune_vit_from_layer 6 \
     --deepspeed ./scripts/zero3.json \
-    --model_name_or_path checkpoints/MobileLLaMA-2.7B-Chat \
+    --model_name_or_path output/finetune/llava_MobileLLaMA-2.7B-Chat/ \
     --version v1 \
-    --data_path datasets/LLaVA-Instruct-150K/llava_v1_5_mix665k_offline.json \
+    --data_path datasets/LLaVA-Instruct-150K/llava_v1_5_mix665k.json \
     --image_folder ./datasets \
     --vision_tower checkpoints/clip-vit-large-patch14-336 \
-    --pretrain_mm_mlp_adapter output/pretrain/MobileLLaMA-2.7B-Chat/mm_projector.bin \
+    --pretrain_mm_mlp_adapter output/pretrain/llava-MobileLLaMA-2.7B-finetune/mm_projector.bin \
     --mm_projector_type mlp2x_gelu \
     --mm_vision_select_layer -2 \
     --mm_use_im_start_end False \
@@ -35,7 +37,7 @@ projects/distill/distill_train.py \
     --image_aspect_ratio pad \
     --group_by_modality_length True \
     --bf16 True \
-    --output_dir ./output/distill/finetune/llava_MobileLLaMA-1.4B-Chat30 \
+    --output_dir llava_mobilellama_3b_on_policy \
     --num_train_epochs 1 \
     --per_device_train_batch_size 8 \
     --per_device_eval_batch_size 4 \

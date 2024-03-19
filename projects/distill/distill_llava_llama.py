@@ -82,7 +82,7 @@ class DistillModel(nn.Module):
         return_dict: Optional[bool] = None,
     ) -> Union[Tuple, CausalLMOutputWithPast]:
 
-        if self.args.align_on_policy and torch.rand() < 0.5:
+        if self.args.align_on_policy and torch.rand(1) < 0.5:
             from llava.constants import DEFAULT_IMAGE_TOKEN
             from llava.conversation import conv_templates, SeparatorStyle
             from llava.mm_utils import tokenizer_image_token, process_images, get_model_name_from_path
@@ -124,7 +124,7 @@ class DistillModel(nn.Module):
                                 top_p=None,
                                 num_beams=1,
                                 max_new_tokens=64,
-                                use_cache=True)
+                                use_cache=False)
                         input_token_len = input_ids_copy.shape[1]
                         n_diff_input_output = (input_ids_copy != output_ids[:, :input_token_len]).sum().item()
                         if n_diff_input_output > 0:
@@ -138,6 +138,7 @@ class DistillModel(nn.Module):
                         outputs = self.student_tokenizer.batch_decode(output_ids[:, input_token_len:], skip_special_tokens=True)[0]
                         
                         outputs = outputs.strip()
+                        # print(outputs)
                         conv.append_message('ASSISTANT', outputs)
                         
                     if len(new_input_ids) > self.student_tokenizer.model_max_length:
@@ -326,6 +327,12 @@ class DistillModel(nn.Module):
                         F.softmax(teacher_logits / 0.7, dim=-1),
                         reduction='batchmean',
                     ) * 0.7 * 0.7
+                    # stu_logits = F.softmax(stu_logits, dim=-1)
+                    # tea_logits = F.softmax(teacher_logits, dim=-1)
+                    # m = ((stu_logits + tea_logits) / 2).log()
+                    # distill_loss += F.kl_div(m, stu_logits, reduction='batchmean')
+                    # distill_loss += F.kl_div(m, tea_logits, reduction='batchmean')
+
                     # distill_loss += F.cross_entropy(stu_logits, teacher_logits.argmax(-1))
             distill_loss /= labels.shape[0]
             loss += distill_loss
@@ -418,7 +425,7 @@ class DistillModel(nn.Module):
                     contrastive_loss += (
                         F.cross_entropy(stu_img_ans, tea_img_ans) + 
                         F.cross_entropy(stu_ans_img, tea_ans_img)
-                    ) / 2
+                    ) / 2 / answer_masks[j].sum()
             loss += (contrastive_loss / bs / bs)
 
         if self.args.align_hidden_embeds:

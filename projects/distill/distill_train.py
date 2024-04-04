@@ -56,6 +56,7 @@ class ModelArguments:
     mm_use_im_start_end: bool = field(default=False)
     mm_use_im_patch_token: bool = field(default=True)
     mm_vision_select_feature: Optional[str] = field(default="patch")
+    teacher_model_path: Optional[str] = field(default="checkpoints/llava-v1.5-13b")
 
 
 @dataclass
@@ -486,7 +487,7 @@ def train():
                         module = module.to(torch.bfloat16)
 
     teacher_model = LlavaLlamaForCausalLM.from_pretrained(
-        "checkpoints/llava-v1.5-13b",
+        model_args.teacher_model_path,
     )
 
     teacher_model.config.use_cache = False

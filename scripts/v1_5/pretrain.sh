@@ -1,9 +1,25 @@
 #!/bin/bash
-PYTHONPATH='.' \
-srun -p s1_mm_research --quotatype=auto --ntasks-per-node=1 --gres=gpu:8 --cpus-per-task=10 --nodes=1 \
-deepspeed llava/train/train_mem.py \
+
+export CUDA_DEVICE_MAX_CONNECTIONS=1
+export GPUS_PER_NODE=8
+export NNODES=1
+export MASTER_PORT=29501
+export CPUS_PER_TASK=32
+export QUOTA=auto
+
+PYTHONPATH="$(dirname $0)/..":$PYTHONPATH \
+srun -p s1_mm_research \
+    --nodes=$NNODES \
+    --ntasks-per-node=1 \
+    --gres=gpu:$GPUS_PER_NODE \
+    --cpus-per-task=$CPUS_PER_TASK \
+    --kill-on-bad-exit=1 \
+    --quotatype=${QUOTA} \
+    bash -c 'torchrun --nnodes $NNODES --nproc_per_node $GPUS_PER_NODE --node_rank $SLURM_NODEID \
+    --master_addr $(scontrol show hostname $SLURM_NODELIST | head -n1) \
+    --master_port ${MASTER_PORT} llava/train/train_mem.py \
     --deepspeed ./scripts/zero2.json \
-    --model_name_or_path checkpoints/MobileLLaMA-1.4B-Chat \
+    --model_name_or_path checkpoints/MobileLLaMA-2.7B-Chat \
     --version plain \
     --data_path datasets/LLaVA-Pretrain/blip_laion_cc_sbu_558k.json \
     --image_folder datasets/LLaVA-Pretrain/images \
@@ -14,7 +30,7 @@ deepspeed llava/train/train_mem.py \
     --mm_use_im_start_end False \
     --mm_use_im_patch_token False \
     --bf16 True \
-    --output_dir output/pretrain/MobileLLaMA-1.4B-Chat1 \
+    --output_dir gg \
     --num_train_epochs 1 \
     --per_device_train_batch_size 32 \
     --per_device_eval_batch_size 4 \
@@ -32,4 +48,4 @@ deepspeed llava/train/train_mem.py \
     --model_max_length 2048 \
     --gradient_checkpointing True \
     --dataloader_num_workers 4 \
-    --lazy_preprocess True
+    --lazy_preprocess True'

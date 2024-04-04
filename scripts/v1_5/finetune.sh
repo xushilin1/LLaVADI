@@ -1,11 +1,27 @@
 #!/bin/bash
-PYTHONPATH='.' \
-srun -p s1_mm_research --quotatype=auto --ntasks-per-node=1 --gres=gpu:8 --cpus-per-task=10 --nodes=1 \
-deepspeed llava/train/train_mem.py \
+
+export CUDA_DEVICE_MAX_CONNECTIONS=1
+export GPUS_PER_NODE=8
+export NNODES=2
+export MASTER_PORT=29501
+export CPUS_PER_TASK=32
+export QUOTA=auto
+
+PYTHONPATH="$(dirname $0)/..":$PYTHONPATH \
+srun -p s1_mm_research \
+    --nodes=$NNODES \
+    --ntasks-per-node=1 \
+    --gres=gpu:$GPUS_PER_NODE \
+    --cpus-per-task=$CPUS_PER_TASK \
+    --kill-on-bad-exit=1 \
+    --quotatype=${QUOTA} \
+    bash -c 'torchrun --nnodes $NNODES --nproc_per_node $GPUS_PER_NODE --node_rank $SLURM_NODEID \
+    --master_addr $(scontrol show hostname $SLURM_NODELIST | head -n1) \
+    --master_port ${MASTER_PORT} llava/train/train_mem.py \
     --deepspeed ./scripts/zero3.json \
     --model_name_or_path checkpoints/MobileLLaMA-1.4B-Chat \
     --version v1 \
-    --data_path datasets/LLaVA-Instruct-150K/llava_v1_5_mix665k.json \
+    --data_path datasets/MobileVLM_V2_FT_Mix2M/MobileVLM_V2_FT_Mix2M.json \
     --image_folder ./datasets \
     --vision_tower checkpoints/clip-vit-large-patch14-336 \
     --pretrain_mm_mlp_adapter output/pretrain/MobileLLaMA-1.4B-Chat1/mm_projector.bin \
@@ -34,4 +50,4 @@ deepspeed llava/train/train_mem.py \
     --model_max_length 2048 \
     --gradient_checkpointing True \
     --dataloader_num_workers 4 \
-    --lazy_preprocess True
+    --lazy_preprocess True'

@@ -431,9 +431,6 @@ class DistillModel(nn.Module):
         if self.args.align_hidden_embeds:
             teacher_embeds = torch.stack(teacher_result.hidden_states, dim=1) #(bs, layers, N, 5120)
             student_embeds = torch.stack(student_result.hidden_states, dim=1) #(bs, layers, N, 2048)
-            
-            # teacher_layer = torch.linspace(0, teacher_embeds.shape[1]-1, steps=10).long()
-            # student_layer = torch.linspace(0, student_embeds.shape[1]-1, steps=10).long()
             teacher_layer = [-1]
             student_layer = [-1]
             teacher_embeds = teacher_embeds[:, teacher_layer, :, :] # (bs, 1, N, 5120)
@@ -443,15 +440,23 @@ class DistillModel(nn.Module):
             student_embeds = self.embed_projector(student_embeds)
             
             # mse_loss = 1 - F.cosine_similarity(student_embeds, teacher_embeds, dim=-1)
-            mse_loss = F.mse_loss(student_embeds, teacher_embeds, reduction='none').mean(-1)
+            distill_loss = 0
+            for i in range(labels.shape[0]):
+                stu_mask = (stu_labels[i] != IGNORE_INDEX) & stu_attention_mask[i]
+                tea_mask = (teacher_labels[i] != IGNORE_INDEX) & teacher_attention_mask[i]
+                if stu_mask.sum() == 0:
+                    continue
+                stu_embed = student_embeds[i, :, stu_mask]
+                tea_embed = teacher_embeds[i, :, tea_mask]
 
-            image_masks, answer_masks = self.get_image_masks(input_ids, stu_labels, stu_attention_mask)
-            # answer_masks = torch.logical_or(answer_masks, image_masks)
-            # answer_masks = stu_attention_mask.unsqueeze(1)
-            answer_masks = answer_masks.unsqueeze(1)
-            mse_loss = (mse_loss * answer_masks).sum() / (answer_masks.sum() + 1e-6)
+                if stu_embed.shape[1] > tea_embed.shape[1]:
+                    stu_embed = stu_embed[:, :tea_embed.shape[1]]
+                if tea_embed.shape[1] > stu_embed.shape[1]:
+                    tea_embed = tea_embed[:, :stu_embed.shape[1]]
 
-            loss = loss + mse_loss * 5.0
+                distill_loss += F.mse_loss(stu_embed, tea_embed)
+                
+            loss = loss + distill_loss / labels.shape[0]
 
         if self.args.align_attn_map:
             # NOTE: flash attention will not return attentions

@@ -1,18 +1,14 @@
-#!/bin/bash
-set -x
-
-wandb login
 
 export CUDA_DEVICE_MAX_CONNECTIONS=1
 export GPUS_PER_NODE=8
-export NNODES=2
+export NNODES=1
 export MASTER_PORT=29501
 export CPUS_PER_TASK=32
 export QUOTA=auto
 
 SRUN_ARGS=${SRUN_ARGS:-""}
 PYTHONPATH="$(dirname $0)/..":$PYTHONPATH \
-srun -p s1_mm_research \
+srun -p s1_mm_dev \
     --nodes=$NNODES \
     --ntasks-per-node=1 \
     --gres=gpu:$GPUS_PER_NODE \
@@ -22,17 +18,20 @@ srun -p s1_mm_research \
     ${SRUN_ARGS} \
     bash -c 'torchrun --nnodes $NNODES --nproc_per_node $GPUS_PER_NODE --node_rank $SLURM_NODEID --master_addr $(scontrol show hostname $SLURM_NODELIST | head -n1) --master_port ${MASTER_PORT} \
     projects/distill/distill_train.py \
-    --teacher_model_path output/finetune/llava_13B_2M \
+    --teacher_model_path checkpoints/llava-v1.5-13b \
+    --output_dir ./output/distill/finetune/llava_MobileLLaMA-2.7B-Chat_exp76 \
+    --model_name_or_path output/finetune/llava_MobileLLaMA-2.7B-Chat \
+    --data_path datasets/LLaVA-Instruct-150K/llava_v1_5_mix665k.json \
     --align_logits True \
     --align_hidden_embeds True \
+    --reverse_kd False \
+    --jsd True \
     --align_on_policy False \
     --align_contrastive_affinity False \
     --tune_entire_model False \
     --tune_vit_from_layer 6 \
-    --model_name_or_path output/finetune/llava_MobileLLaMA-2.7B-2M/ \
     --deepspeed ./scripts/zero3.json \
     --version v1 \
-    --data_path datasets/MobileVLM_V2_FT_Mix2M/MobileVLM_V2_FT_Mix2M.json \
     --image_folder ./datasets \
     --vision_tower checkpoints/clip-vit-large-patch14-336 \
     --mm_projector_type mlp2x_gelu \
@@ -42,11 +41,10 @@ srun -p s1_mm_research \
     --image_aspect_ratio pad \
     --group_by_modality_length True \
     --bf16 True \
-    --output_dir output/llava_mobile_llama_3b_2M_stu_init_tea_init \
     --num_train_epochs 1 \
     --per_device_train_batch_size 8 \
     --per_device_eval_batch_size 4 \
-    --gradient_accumulation_steps 1 \
+    --gradient_accumulation_steps 2 \
     --evaluation_strategy "no" \
     --save_strategy "steps" \
     --save_steps 50000 \

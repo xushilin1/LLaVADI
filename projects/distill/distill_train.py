@@ -102,6 +102,8 @@ class TrainingArguments(transformers.TrainingArguments):
     align_image_tokens: bool = False
     align_affinity: bool = False
     mse_distill: bool = False
+    reverse_kd: bool = False
+    jsd: bool = False
     align_hidden_embeds: bool = False
     align_attn_map: bool = False
     align_vision_tower: bool = False

@@ -172,28 +172,6 @@
     * align_logits * 5, align_hidden_states * 5 （最后一层）
     * epoch=3
 
-* ./output/distill/finetune/llava_MobileLLaMA-2.7B-Chat_exp43
-    * 使用20层的LLaVA，使用LLaVA-13b的前面20层初始化；
-    * openai/clip-vit-base；位置编码随机初始化；维度768和teacher的维度不一致；随机初始化映射层
-    * aligh_affinity; hidden_embeds（使用所有token）align_logits * 5
-    * align_vision_tower（teacher使用LLaVA，经过映射层后的特征维度可以保持一致）
-    * epoch=6
-
-* ./output/distill/finetune/llava_MobileLLaMA-2.7B-Chat_exp44
-    * 使用20层的LLaVA，使用LLaVA-13b的前面20层初始化；
-    * openai/clip-vit-base；位置编码随机初始化；维度768和teacher的维度不一致；随机初始化映射层
-    * aligh_affinity; hidden_embeds（使用所有token）align_logits * 5
-    * align_vision_tower（teacher使用LLaVA，经过映射层后的特征维度可以保持一致）
-    * epoch=1
-
-
-* ./output/distill/finetune/llava_MobileLLaMA-2.7B-Chat_exp45
-    * 使用20层的LLaVA，使用LLaVA-13b的前面20层初始化；
-    * 随机初始化映射层和patch—embedding；不使用align_vision_tower的loss
-    * aligh_affinity; hidden_embeds（使用所有token）align_logits * 5
-    * align_vision_tower（teacher使用LLaVA，经过映射层后的特征维度可以保持一致）
-    * epoch=1
-
 
 * ./output/distill/finetune/llava_MobileLLaMA-2.7B-Chat_exp46
     * 使用30层的LLaVA，使用LLaVA-13b的前面30层初始化；
@@ -229,10 +207,6 @@
     * epoch=1
     * textvqa: 50.1
 
-* ./output/distill/finetune/llava_MobileLLaMA-2.7B-Chat_exp53
-    * student: clip-vit-base-patch16 + MobileLLaMA-2.7B-Chat
-    * teacher: LLaVA-13B
-    * align_logits(仅有answer token产生loss); 使用5120个token
 
 * ./output/distill/finetune/llava_MobileLLaMA-2.7B-Chat_exp54
     * student: clip-vit-base-patch16 + MobileLLaMA-2.7B-Chat
@@ -240,8 +214,34 @@
     * align_logits(仅有answer token产生loss)；使用2048个token（默认值）
     * textvqa：41.1
 
-* ./output/distill/finetune/llava_MobileLLaMA-2.7B-Chat_exp55
-    * student: clip-vit-base-patch16 + MobileLLaMA-2.7B-Chat
-    * teacher: LLaVA-13B
-    * align_logits(仅有answer token产生loss); 使用2048个token（默认值）；
-    * finetune最后6层vit
+
+* ./output/distill/finetune/llava_MobileLLaMA-2.7B-Chat_exp60
+    * align_logits(仅有answer token产生loss); 
+    * tune entire model during pretrain
+
+* ./output/distill/finetune/llava_MobileLLaMA-2.7B-Chat_exp70
+    * 没有蒸馏；使用13B_2M模型产生的15w数据微调stu
+
+
+* ./output/distill/finetune/llava_MobileLLaMA-2.7B-Chat_exp71
+    * 没有蒸馏；使用13B_2M模型产生的15w数据微调官方3B
+
+* ./output/distill/finetune/llava_MobileLLaMA-2.7B-Chat_exp72
+    * 没有蒸馏；使用13B_2M模型产生的15w数据微调3B_2M
+
+* ./output/distill/finetune/llava_MobileLLaMA-2.7B-Chat_exp73
+    * 没有蒸馏；使用13B_2M模型产生的15w数据微调蒸馏过的模型
+    * output/llava_mobile_llama_3b_2M_stu_init
+
+* ./output/distill/finetune/llava_MobileLLaMA-2.7B-Chat_exp74
+    * 没有蒸馏；使用2M+150K数据finetune
+
+* ./output/distill/finetune/llava_MobileLLaMA-2.7B-Chat_exp75
+    * reverse_kd; logits + hidden_states;
+    * checkpoints/llava-v1.5-13b
+    * output/finetune/llava_MobileLLaMA-2.7B-Chat
+
+* ./output/distill/finetune/llava_MobileLLaMA-2.7B-Chat_exp76
+    * jsd; logits + hidden_states;
+    * checkpoints/llava-v1.5-13b
+    * output/finetune/llava_MobileLLaMA-2.7B-Chat

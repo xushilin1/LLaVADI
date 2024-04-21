@@ -322,17 +322,23 @@ class DistillModel(nn.Module):
                 if self.args.mse_distill:
                     distill_loss += F.mse_loss(stu_logits, teacher_logits)
                 else:
-                    distill_loss += F.kl_div(
-                        F.log_softmax(stu_logits / 0.7, dim=-1),
-                        F.softmax(teacher_logits / 0.7, dim=-1),
-                        reduction='batchmean',
-                    ) * 0.7 * 0.7
-                    # stu_logits = F.softmax(stu_logits, dim=-1)
-                    # tea_logits = F.softmax(teacher_logits, dim=-1)
-                    # m = ((stu_logits + tea_logits) / 2).log()
-                    # distill_loss += F.kl_div(m, stu_logits, reduction='batchmean')
-                    # distill_loss += F.kl_div(m, tea_logits, reduction='batchmean')
-
+                    if self.args.reverse_kd:
+                        distill_loss += F.kl_div(
+                            F.log_softmax(teacher_logits / 0.7, dim=-1),
+                            F.softmax(stu_logits / 0.7, dim=-1),
+                            reduction='batchmean',
+                        ) * 0.7 * 0.7
+                    elif self.args.jsd:
+                        stu_logits = F.softmax(stu_logits, dim=-1)
+                        tea_logits = F.softmax(teacher_logits, dim=-1)
+                        m = ((stu_logits + tea_logits) / 2).log()
+                        distill_loss += (F.kl_div(m, stu_logits, reduction='batchmean') + F.kl_div(m, tea_logits, reduction='batchmean')) / 2
+                    else:
+                        distill_loss += F.kl_div(
+                            F.log_softmax(stu_logits / 0.7, dim=-1),
+                            F.softmax(teacher_logits / 0.7, dim=-1),
+                            reduction='batchmean',
+                        ) * 0.7 * 0.7
                     # distill_loss += F.cross_entropy(stu_logits, teacher_logits.argmax(-1))
             distill_loss /= labels.shape[0]
             loss += distill_loss

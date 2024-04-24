@@ -101,6 +101,7 @@ class TrainingArguments(transformers.TrainingArguments):
     align_logits_all: bool = False
     align_image_tokens: bool = False
     align_affinity: bool = False
+    norm_logits: bool = False
     mse_distill: bool = False
     reverse_kd: bool = False
     jsd: bool = False

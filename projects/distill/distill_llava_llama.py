@@ -437,8 +437,8 @@ class DistillModel(nn.Module):
         if self.args.align_hidden_embeds:
             teacher_embeds = torch.stack(teacher_result.hidden_states, dim=1) #(bs, layers, N, 5120)
             student_embeds = torch.stack(student_result.hidden_states, dim=1) #(bs, layers, N, 2048)
-            teacher_layer = [-2, -1]
-            student_layer = [-2, -1]
+            teacher_layer = [-1]
+            student_layer = [-1]
             teacher_embeds = teacher_embeds[:, teacher_layer, :, :] # (bs, 1, N, 5120)
             student_embeds = student_embeds[:, student_layer, :, :]
 

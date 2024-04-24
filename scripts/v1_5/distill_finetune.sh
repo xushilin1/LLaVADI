@@ -18,14 +18,14 @@ srun -p s1_mm_dev \
     ${SRUN_ARGS} \
     bash -c 'torchrun --nnodes $NNODES --nproc_per_node $GPUS_PER_NODE --node_rank $SLURM_NODEID --master_addr $(scontrol show hostname $SLURM_NODELIST | head -n1) --master_port ${MASTER_PORT} \
     projects/distill/distill_train.py \
-    --teacher_model_path checkpoints/llava-v1.5-13b \
-    --output_dir ./output/distill/finetune/llava_MobileLLaMA-2.7B-Chat_exp76 \
+    --teacher_model_path output/finetune/llava_13B_2M/ \
+    --output_dir ./output/distill/finetune/llava_MobileLLaMA-2.7B-Chat_exp80 \
     --model_name_or_path output/finetune/llava_MobileLLaMA-2.7B-Chat \
-    --data_path datasets/LLaVA-Instruct-150K/llava_v1_5_mix665k.json \
+    --data_path datasets/MobileVLM_V2_FT_Mix2M/MobileVLM_V2_FT_Mix_665k_150k.json \
     --align_logits True \
     --align_hidden_embeds True \
     --reverse_kd False \
-    --jsd True \
+    --jsd False \
     --align_on_policy False \
     --align_contrastive_affinity False \
     --tune_entire_model False \

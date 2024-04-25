@@ -27,7 +27,7 @@ from transformers.modeling_outputs import CausalLMOutputWithPast
 from llava.model.llava_arch import LlavaMetaModel, LlavaMetaForCausalLM
 
 import torch.nn.functional as F
-
+from llava.train.train import preprocess
 
 class DistillModel(nn.Module):
     
@@ -104,16 +104,16 @@ class DistillModel(nn.Module):
                     
                     conversations = self.student_tokenizer.decode(input_id, skip_special_tokens=True)
                     conversations = conversations.split('USER: ')[1:]
-                    
+                    source = []
                     for conv_i, sent in enumerate(conversations):
                         qs = sent.split('ASSISTANT')[0].strip()
+                        source.append({'from':'human', 'value':qs})
                         if conv_i == 0 and has_img:
                             qs = DEFAULT_IMAGE_TOKEN + '\n' + qs
                         conv.append_message("USER", qs)
                         prompt = conv.get_prompt()
                         input_ids_copy = tokenizer_image_token(prompt + "ASSISTANT:", self.student_tokenizer, IMAGE_TOKEN_INDEX, return_tensors='pt')
                         new_input_ids = input_ids_copy.tolist()
-                        new_target.extend([IGNORE_INDEX] * (len(input_ids_copy) - len(new_target)))
                         input_ids_copy = input_ids_copy.unsqueeze(0).to(self.student_model.device)
                         with torch.no_grad():
                             output_ids = self.student_model.generate(
@@ -130,16 +130,14 @@ class DistillModel(nn.Module):
                         if n_diff_input_output > 0:
                             raise ValueError(f'[Warning] {n_diff_input_output} output_ids are not the same as the input_ids')
                         
-                        new_input_ids.extend(output_ids[0, input_token_len:].tolist())
-                        new_target.extend(output_ids[0, input_token_len:].tolist())
-                        if eos_id != output_ids[0, -1]:
-                            new_input_ids.append(eos_id) # </s>
-                            new_target.append(eos_id)
                         outputs = self.student_tokenizer.batch_decode(output_ids[:, input_token_len:], skip_special_tokens=True)[0]
-                        
                         outputs = outputs.strip()
-                        # print(outputs)
+                        source.append({'from':'gpt', 'value':outputs})
                         conv.append_message('ASSISTANT', outputs)
+                    
+                    resp = preprocess([source], self.student_tokenizer, has_img)
+                    new_input_ids = resp['input_ids']
+                    new_target = resp['labels']
                         
                     if len(new_input_ids) > self.student_tokenizer.model_max_length:
                         new_input_ids = new_input_ids[:self.student_tokenizer.model_max_length]
@@ -148,8 +146,6 @@ class DistillModel(nn.Module):
                     new_input_ids = torch.tensor(new_input_ids).to(input_ids)
                     attn_mask = torch.ones_like(new_input_ids, dtype=torch.bool)
                     new_target = torch.tensor(new_target).to(labels)
-
-                    assert len(new_input_ids) == len(new_target)
 
                     bs_new_input_ids.append(new_input_ids)
                     bs_new_attn_mask.append(attn_mask)
@@ -332,10 +328,10 @@ class DistillModel(nn.Module):
                 else:
                     if self.args.reverse_kd:
                         distill_loss += F.kl_div(
-                            F.log_softmax(tea_logits / 0.7, dim=-1),
-                            F.softmax(stu_logits / 0.7, dim=-1),
+                            F.log_softmax(tea_logits, dim=-1),
+                            F.softmax(stu_logits, dim=-1),
                             reduction='batchmean',
-                        ) * 0.7 * 0.7
+                        )
                     elif self.args.jsd:
                         stu_logits = F.softmax(stu_logits, dim=-1)
                         tea_logits = F.softmax(tea_logits, dim=-1)

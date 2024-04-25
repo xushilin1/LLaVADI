@@ -503,7 +503,7 @@ def train():
     teacher_model.config.mm_use_im_patch_token = model_args.mm_use_im_patch_token
 
     teacher_tokenizer = transformers.AutoTokenizer.from_pretrained(
-        "checkpoints/llava-v1.5-13b",
+        model_args.teacher_model_path,
         model_max_length=training_args.model_max_length,
         use_fast=False,
         padding_side="right"

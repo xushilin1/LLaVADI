@@ -24,6 +24,7 @@ srun -p s1_mm_dev \
     --data_path llava_13B_2M.json \
     --image_folder ./datasets \
     --vision_tower checkpoints/clip-vit-large-patch14-336 \
+    --pretrain_mm_mlp_adapter ./checkpoints/llava-v1.5-13b-pretrain/mm_projector.bin \
     --mm_projector_type mlp2x_gelu \
     --mm_vision_select_layer -2 \
     --mm_use_im_start_end False \

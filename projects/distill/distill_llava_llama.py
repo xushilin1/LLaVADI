@@ -452,8 +452,13 @@ class DistillModel(nn.Module):
             # mse_loss = 1 - F.cosine_similarity(student_embeds, teacher_embeds, dim=-1)
             distill_loss = 0
             for i in range(labels.shape[0]):
-                stu_mask = (stu_labels[i] != IGNORE_INDEX) & stu_attention_mask[i]
-                tea_mask = (teacher_labels[i] != IGNORE_INDEX) & teacher_attention_mask[i]
+                if self.args.align_all_hidden_embeds:
+                    stu_mask = stu_attention_mask[i]
+                    tea_mask = teacher_attention_mask[i]
+                else:
+                    stu_mask = (stu_labels[i] != IGNORE_INDEX) & stu_attention_mask[i]
+                    tea_mask = (teacher_labels[i] != IGNORE_INDEX) & teacher_attention_mask[i]
+                
                 if stu_mask.sum() == 0:
                     continue
                 stu_embed = student_embeds[i, :, stu_mask]

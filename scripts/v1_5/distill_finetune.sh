@@ -6,7 +6,6 @@ export MASTER_PORT=29501
 export CPUS_PER_TASK=32
 export QUOTA=auto
 
-SRUN_ARGS=${SRUN_ARGS:-""}
 PYTHONPATH="$(dirname $0)/..":$PYTHONPATH \
 srun -p s1_mm_dev \
     --nodes=$NNODES \
@@ -15,15 +14,18 @@ srun -p s1_mm_dev \
     --cpus-per-task=$CPUS_PER_TASK \
     --kill-on-bad-exit=1 \
     --quotatype=${QUOTA} \
-    ${SRUN_ARGS} \
     bash -c 'torchrun --nnodes $NNODES --nproc_per_node $GPUS_PER_NODE --node_rank $SLURM_NODEID --master_addr $(scontrol show hostname $SLURM_NODELIST | head -n1) --master_port ${MASTER_PORT} \
     projects/distill/distill_train.py \
     --teacher_model_path output/finetune/llava_13B_2M/ \
-    --output_dir ./output/distill/finetune/llava_MobileLLaMA-2.7B-Chat_exp80 \
-    --model_name_or_path output/finetune/llava_MobileLLaMA-2.7B-Chat \
-    --data_path datasets/MobileVLM_V2_FT_Mix2M/MobileVLM_V2_FT_Mix_665k_150k.json \
+    --output_dir ./output/distill/finetune/llava_MobileLLaMA-2.7B-Chat_exp91 \
+    --model_name_or_path checkpoints/MobileLLaMA-2.7B-Chat/ \
+    --pretrain_mm_mlp_adapter output/pretrain/llava-MobileLLaMA-2.7B/mm_projector.bin \
+    --data_path datasets/MobileVLM_V2_FT_Mix2M/MobileVLM_V2_FT_Mix2M.json \
     --align_logits True \
+    --align_logits_all True \
+    --norm_logits True \
     --align_hidden_embeds True \
+    --align_all_hidden_embeds True \
     --reverse_kd False \
     --jsd False \
     --align_on_policy False \

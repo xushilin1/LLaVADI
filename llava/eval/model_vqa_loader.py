@@ -94,7 +94,7 @@ def eval_model(args):
                             "allgather_bucket_size": 5e8}
     }
     model.requires_grad_(False)
-for p in model.get_model().mm_projector.parameters():
+    for p in model.get_model().mm_projector.parameters():
         p.requires_grad = True
     model, _, _, _ = deepspeed.initialize(
         model=model, model_parameters=model.parameters(), config=ds_config

@@ -32,7 +32,7 @@ from projects.distill.distill_llava_llama import DistillModel
 local_rank = None
 
 
-replace_llama_attn_with_flash_attn()
+
 from transformers.models.llama.modeling_llama import LlamaModel # L708
 
 from llava.train.train import rank0_print, DataArguments
@@ -309,6 +309,8 @@ def train():
     parser = transformers.HfArgumentParser(
         (ModelArguments, DataArguments, TrainingArguments))
     model_args, data_args, training_args = parser.parse_args_into_dataclasses()
+    if not training_args.align_attn_map:
+        replace_llama_attn_with_flash_attn()
     local_rank = training_args.local_rank
     compute_dtype = (torch.float16 if training_args.fp16 else (torch.bfloat16 if training_args.bf16 else torch.float32))
 

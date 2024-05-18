@@ -185,6 +185,10 @@ class DistillModel(nn.Module):
             tea_images
         )
 
+        output_attentions = False
+        if self.args.align_attn_map:
+            output_attentions = True
+
         teacher_result = self.teacher_model.forward(
             input_ids=teacher_input_ids,
             attention_mask=teacher_attention_mask,
@@ -193,7 +197,7 @@ class DistillModel(nn.Module):
             inputs_embeds=teacher_inputs_embeds,
             labels=teacher_labels,
             use_cache=use_cache,
-            output_attentions=False,
+            output_attentions=output_attentions,
             output_hidden_states=True,
             images=tea_images,
             return_dict=return_dict
@@ -288,7 +292,7 @@ class DistillModel(nn.Module):
             inputs_embeds=stu_inputs_embeds,
             labels=stu_labels,
             use_cache=use_cache,
-            output_attentions=False,
+            output_attentions=output_attentions,
             output_hidden_states=True,
             images=stu_images,
             return_dict=return_dict
@@ -476,41 +480,20 @@ class DistillModel(nn.Module):
         if self.args.align_attn_map:
             # NOTE: flash attention will not return attentions
             if student_result.attentions[0] is not None:
-                # teacher_embeds = torch.stack(teacher_result.attentions, dim=1) # (bs, num_layer, num_heads, L, L)
-                # student_embeds = torch.stack(student_result.attentions, dim=1)
-                # teacher_layer = torch.linspace(0, teacher_embeds.shape[1]-1, steps=10).long()
-                # student_layer = torch.linspace(0, student_embeds.shape[1]-1, steps=10).long()
-            
-                # teacher_embeds = teacher_embeds[:, teacher_layer]
-                # student_embeds = student_embeds[:, student_layer]
-                teacher_embeds = teacher_result.attentions[-1]
-                student_embeds = student_result.attentions[-1]
-                attn_loss = F.mse_loss(student_embeds, teacher_embeds, reduction='none')
+                image_masks, answer_masks = self.get_image_masks(input_ids, stu_labels, stu_attention_mask)
+                tea_embeds = teacher_result.attentions[-1] # layers
+                stu_embeds = student_result.attentions[-1]
+                if tea_embeds.shape[1] != stu_embeds.shape[1]: # heads
+                    tea_embeds= tea_embeds.mean(dim=1, keepdim=True)
+                    stu_embeds = stu_embeds.mean(dim=1, keepdim=True)
+                attn_loss = F.mse_loss(stu_embeds, tea_embeds, reduction='none')
 
-                image_masks, answer_masks = [], []
-                for batch_idx, cur_input_ids in enumerate(input_ids):
-                    img_mask = teacher_embeds.new_zeros(teacher_embeds.shape[2], dtype=torch.bool)
-                    ans_mask = teacher_embeds.new_zeros(teacher_embeds.shape[2], dtype=torch.bool)
-                    if (cur_input_ids == IMAGE_TOKEN_INDEX).sum() == 0: # no image in conversation
-                        pass
-                    else:
-                        num_img_token = 576
-                        image_token_indices = torch.where(cur_input_ids == IMAGE_TOKEN_INDEX)[0].item()
-                        img_mask[image_token_indices:image_token_indices+num_img_token] = True
-                        ans_mask = stu_labels[batch_idx] != IGNORE_INDEX
-                        ans_mask = ans_mask & stu_attention_mask[batch_idx] # remove padding
-                    image_masks.append(img_mask)
-                    answer_masks.append(ans_mask)
-
-                image_masks = torch.stack(image_masks, dim=0)
-                answer_masks = torch.stack(answer_masks, dim=0)
-                
                 masks = (image_masks.unsqueeze(2) * answer_masks.unsqueeze(1)).unsqueeze(1)
                 masks = (answer_masks.unsqueeze(2) * answer_masks.unsqueeze(1)).unsqueeze(1)
                 masks = (answer_masks.unsqueeze(2) * image_masks.unsqueeze(1)).unsqueeze(1)
 
-                attn_loss = (attn_loss * masks).sum() / (masks.sum() + 1e-6)
-
+                # attn_loss = (attn_loss * masks).sum() / (masks.sum() + 1e-6)
+                attn_loss = (attn_loss * masks).sum() / masks.shape[0]
                 loss = loss + attn_loss * 5.0
 
         if self.args.align_vision_tower:

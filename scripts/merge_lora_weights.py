@@ -13,7 +13,7 @@ def merge_lora(args):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--model-path", type=str, default='output/reasoning/llava-v1.5-7b-task-lora')
+    parser.add_argument("--model-path", type=str, default='work_dirs/mgm_7b_lora_1x1x64x1')
     parser.add_argument("--model-base", type=str, default='checkpoints/llava-v1.5-7b/')
     parser.add_argument("--save-model-path", type=str, default='output/reasoning/llava-v1.5-7b-task-lora_full')
 

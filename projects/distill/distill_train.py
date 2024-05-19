@@ -100,6 +100,7 @@ class TrainingArguments(transformers.TrainingArguments):
     align_sparse_logits: bool = False
     align_logits_all: bool = False
     align_all_hidden_embeds: bool = False
+    align_hidden_embeds_layers: List[int] = [-1]
     align_image_tokens: bool = False
     align_affinity: bool = False
     norm_logits: bool = False

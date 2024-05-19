@@ -108,6 +108,10 @@ class TrainingArguments(transformers.TrainingArguments):
     jsd: bool = False
     align_hidden_embeds: bool = False
     align_attn_map: bool = False
+    attn_img2ans: bool = False
+    attn_ans2img: bool = False
+    attn_img2img: bool = False
+    attn_ans2ans: bool = False
     align_vision_tower: bool = False
     align_contrastive_affinity: bool = False
 

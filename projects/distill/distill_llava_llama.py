@@ -489,10 +489,15 @@ class DistillModel(nn.Module):
                 attn_loss = F.mse_loss(stu_embeds, tea_embeds, reduction='none')
 
                 masks = torch.ones_like(attn_loss)
-                masks = (image_masks.unsqueeze(2) * answer_masks.unsqueeze(1)).unsqueeze(1)
-                masks = (answer_masks.unsqueeze(2) * answer_masks.unsqueeze(1)).unsqueeze(1)
-                masks = (answer_masks.unsqueeze(2) * image_masks.unsqueeze(1)).unsqueeze(1)
-
+                if self.args.attn_img2ans:
+                    masks = (image_masks.unsqueeze(2) * answer_masks.unsqueeze(1)).unsqueeze(1)
+                elif self.args.attn_ans2img:
+                    masks = (answer_masks.unsqueeze(2) * image_masks.unsqueeze(1)).unsqueeze(1)
+                elif self.args.attn_img2img:
+                    masks = (image_masks.unsqueeze(2) * image_masks.unsqueeze(1)).unsqueeze(1)
+                elif self.args.attn_ans2ans:
+                    masks = (answer_masks.unsqueeze(2) * answer_masks.unsqueeze(1)).unsqueeze(1)
+                
                 # attn_loss = (attn_loss * masks).sum() / (masks.sum() + 1e-6)
                 attn_loss = (attn_loss * masks).sum() / masks.shape[0]
                 loss = loss + attn_loss * 5.0

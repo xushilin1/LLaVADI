@@ -1,3 +1,10 @@
+# LAVADI: What Matters For Multimodal Large Language Models Distillation
+
+
+```bash
+bash scripts/v1_5/distill_finetune.sh
+```
+
 # 🌋 LLaVA: Large Language and Vision Assistant
 
 *Visual instruction tuning towards large language and vision models with GPT-4 level capabilities.*
